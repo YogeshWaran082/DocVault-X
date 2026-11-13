@@ -1,0 +1,279 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Organization {
+  id         String   @id @default(uuid())
+  name       String   @db.VarChar(255)
+  plan       String   @default("standard") @db.VarChar(64)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  memberships     Membership[]
+  devices         Device[]
+  documents       Document[]
+  policies        Policy[]
+  grants          Grant[]
+  licenses        License[]
+  shareLinks      ShareLink[]
+  accessEvents    AccessEvent[]
+  conversionJobs  ConversionJob[]
+  deletionJobs    DeletionJob[]
+  auditEvents     AuditEvent[]
+  keyVersions     KeyVersion[]
+
+  @@map("organizations")
+}
+
+model User {
+  id                   String   @id @default(uuid())
+  email                String   @unique @db.VarChar(255)
+  name                 String   @db.VarChar(255)
+  passwordHash         String?  @map("password_hash") @db.VarChar(255)
+  mfaEnabled           Boolean  @default(false) @map("mfa_enabled")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  memberships  Membership[]
+  devices      Device[]
+  documents    Document[]
+  grants       Grant[]
+  accessEvents AccessEvent[]
+  auditEvents  AuditEvent[]
+
+  @@map("users")
+}
+
+model Membership {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  role           String   @default("sender") @db.VarChar(64)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("memberships")
+}
+
+model Device {
+  id                String    @id @default(uuid())
+  organizationId    String    @map("organization_id")
+  userId            String    @map("user_id")
+  devicePublicKey   String    @map("device_public_key")
+  platform          String    @db.VarChar(64)
+  attestationStatus String    @default("unverified") @map("attestation_status") @db.VarChar(64)
+  enrolledAt        DateTime  @default(now()) @map("enrolled_at")
+  revokedAt         DateTime? @map("revoked_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenses     License[]
+  accessEvents AccessEvent[]
+
+  @@map("devices")
+}
+
+model Document {
+  id                String    @id @default(uuid())
+  organizationId    String    @map("organization_id")
+  ownerUserId       String    @map("owner_user_id")
+  title             String    @db.VarChar(255)
+  mimeDeclared      String    @map("mime_declared") @db.VarChar(128)
+  mimeDetected      String    @map("mime_detected") @db.VarChar(128)
+  sizeBytes         BigInt    @map("size_bytes")
+  sha256Ciphertext  String    @map("sha256_ciphertext") @db.VarChar(64)
+  currentVersionId  String?   @map("current_version_id")
+  status            String    @default("active") @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User              @relation(fields: [ownerUserId], references: [id])
+  versions     DocumentVersion[]
+  policies     Policy[]
+  grants       Grant[]
+  accessEvents AccessEvent[]
+  deletionJobs DeletionJob[]
+
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id               String   @id @default(uuid())
+  documentId       String   @map("document_id")
+  objectKey        String   @map("object_key")
+  containerVersion Int      @default(1) @map("container_version")
+  wrappedDekRef    String   @map("wrapped_dek_ref")
+  sizeBytes        BigInt   @map("size_bytes")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  document       Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  conversionJobs ConversionJob[]
+
+  @@map("document_versions")
+}
+
+model Policy {
+  id                  String    @id @default(uuid())
+  organizationId      String    @map("organization_id")
+  documentId          String    @map("document_id")
+  version             Int       @default(1)
+  mode                String    @default("SECURE_NATIVE") @db.VarChar(64)
+  expiresAtUtc        DateTime? @map("expires_at_utc")
+  maxOpens            Int?      @map("max_opens")
+  offlineLeaseSeconds Int       @default(86400) @map("offline_lease_seconds")
+  allowExport         Boolean   @default(false) @map("allow_export")
+  allowPrint          Boolean   @default(false) @map("allow_print")
+  watermarkTemplate   String?   @map("watermark_template")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  supersededAt        DateTime? @map("superseded_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  grants       Grant[]
+
+  @@map("policies")
+}
+
+model Grant {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  documentId      String    @map("document_id")
+  recipientUserId String    @map("recipient_user_id")
+  policyId        String    @map("policy_id")
+  status          String    @default("active") @db.VarChar(64)
+  grantedAt       DateTime  @default(now()) @map("granted_at")
+  revokedAt       DateTime? @map("revoked_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  recipient    User         @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+  policy       Policy       @relation(fields: [policyId], references: [id])
+  licenses     License[]
+  shareLinks   ShareLink[]
+
+  @@map("grants")
+}
+
+model License {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  grantId        String    @map("grant_id")
+  deviceId       String    @map("device_id")
+  policyVersion  Int       @default(1) @map("policy_version")
+  issuedAt       DateTime  @default(now()) @map("issued_at")
+  notBefore      DateTime  @default(now()) @map("not_before")
+  expiresAt      DateTime  @map("expires_at")
+  leaseExpiresAt DateTime  @map("lease_expires_at")
+  licenseJti     String    @unique @map("license_jti") @db.VarChar(128)
+  signedPayload  String    @map("signed_payload")
+  revokedAt      DateTime? @map("revoked_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grant        Grant        @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  device       Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("licenses")
+}
+
+model ShareLink {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  grantId        String   @map("grant_id")
+  tokenHash      String   @unique @map("token_hash") @db.VarChar(64)
+  expiresAt      DateTime @map("expires_at")
+  maxUses        Int      @default(1) @map("max_uses")
+  usedCount      Int      @default(0) @map("used_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grant        Grant        @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@map("share_links")
+}
+
+model AccessEvent {
+  id               String   @id @default(uuid())
+  organizationId   String   @map("organization_id")
+  documentId       String   @map("document_id")
+  userId           String?  @map("user_id")
+  deviceId         String?  @map("device_id")
+  eventType        String   @map("event_type") @db.VarChar(64)
+  eventTime        DateTime @default(now()) @map("event_time")
+  offlineReported  Boolean  @default(false) @map("offline_reported")
+  metadataRedacted String?  @map("metadata_redacted")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+  device       Device?      @relation(fields: [deviceId], references: [id])
+
+  @@map("access_events")
+}
+
+model ConversionJob {
+  id                String    @id @default(uuid())
+  organizationId    String    @map("organization_id")
+  documentVersionId String    @map("document_version_id")
+  status            String    @default("pending") @db.VarChar(64)
+  previewObjectKey  String?   @map("preview_object_key")
+  errorCode         String?   @map("error_code") @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  completedAt       DateTime? @map("completed_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+
+  @@map("conversion_jobs")
+}
+
+model DeletionJob {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  documentId     String    @map("document_id")
+  requestedAt    DateTime  @default(now()) @map("requested_at")
+  completedAt    DateTime? @map("completed_at")
+  status         String    @default("pending") @db.VarChar(64)
+  errorCode      String?   @map("error_code") @db.VarChar(64)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("deletion_jobs")
+}
+
+model AuditEvent {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  actorUserId     String?  @map("actor_user_id")
+  action          String   @db.VarChar(128)
+  targetType      String   @map("target_type") @db.VarChar(64)
+  targetId        String   @map("target_id")
+  timestamp       DateTime @default(now())
+  ipHash          String?  @map("ip_hash") @db.VarChar(64)
+  detailsRedacted String?  @map("details_redacted")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorUserId], references: [id])
+
+  @@map("audit_events")
+}
+
+model KeyVersion {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  kmsKeyRef      String    @map("kms_key_ref")
+  state          String    @db.VarChar(64)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  retiredAt      DateTime? @map("retired_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("key_versions")
+}

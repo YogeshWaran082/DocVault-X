@@ -75,6 +75,7 @@ export function createApp(): Express {
   });
 
   app.use('/api/v1', v1);
+  app.use('/v1', v1);
 
   // Serve static web build if present
   const webDistPath = path.resolve(process.cwd(), '../web/dist');

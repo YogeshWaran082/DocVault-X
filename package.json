@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r run build",
+    "bundle:api": "./node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/bin/esbuild apps/api/src/serverless.ts --bundle --platform=node --target=node20 --outfile=api/index.js --format=cjs '--footer:js=module.exports = serverless_exports.default || serverless_exports;'",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint"
   },

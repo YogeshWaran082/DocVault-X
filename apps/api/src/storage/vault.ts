@@ -3,14 +3,28 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { DvxCryptoEngine, EncryptedContainer } from '@docvault/crypto-core';
 
+function getDataDirectory(): string {
+  if (process.env['DATA_DIR']) {
+    return process.env['DATA_DIR'];
+  }
+  if (process.env['VERCEL']) {
+    return '/tmp/docvault_data';
+  }
+  return path.join(process.cwd(), 'data');
+}
+
 export class EncryptedVaultStorage {
   private baseDir: string;
   private masterKmsKey: Buffer;
 
   constructor(vaultDir?: string) {
-    this.baseDir = vaultDir || path.join(process.cwd(), 'data', 'vault');
-    if (!fs.existsSync(this.baseDir)) {
-      fs.mkdirSync(this.baseDir, { recursive: true });
+    this.baseDir = vaultDir || path.join(getDataDirectory(), 'vault');
+    try {
+      if (!fs.existsSync(this.baseDir)) {
+        fs.mkdirSync(this.baseDir, { recursive: true });
+      }
+    } catch {
+      // Safe fallback if directory creation fails
     }
 
     // Master Key loaded from environment or persistent secret

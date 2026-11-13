@@ -226,12 +226,22 @@ export interface DatabaseState {
   keyVersions: DbKeyVersion[];
 }
 
+function getDataDirectory(): string {
+  if (process.env['DATA_DIR']) {
+    return process.env['DATA_DIR'];
+  }
+  if (process.env['VERCEL']) {
+    return '/tmp/docvault_data';
+  }
+  return path.join(process.cwd(), 'data');
+}
+
 export class Database {
   private state: DatabaseState;
   private dbFilePath: string;
 
   constructor(filePath?: string) {
-    this.dbFilePath = filePath || path.join(process.cwd(), 'data', 'docvault_db.json');
+    this.dbFilePath = filePath || path.join(getDataDirectory(), 'docvault_db.json');
     this.state = this.load();
   }
 

@@ -198,7 +198,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
 
           <div className="text-center">
             <button
-              onClick={() => setIsRegister(!isRegister)}
+              onClick={() => {
+                setError(null);
+                setIsRegister(!isRegister);
+              }}
               className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
             >
               {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}

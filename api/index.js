@@ -40791,10 +40791,35 @@ var Database = class {
       }
     } catch {
     }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
     return {
-      organizations: [],
-      users: [],
-      memberships: [],
+      organizations: [
+        {
+          id: "demo-org-global-defense",
+          name: "Global Defense Labs",
+          plan: "enterprise",
+          createdAt: now
+        }
+      ],
+      users: [
+        {
+          id: "demo-user-admin",
+          email: "admin@docvault-demo.com",
+          name: "Security Executive",
+          passwordHash: "$2a$10$CyrJZyYTdA8QXQIJNmmyweiCO0ArXwvTpifauANh10W0gWjBSAHvy",
+          mfaEnabled: false,
+          createdAt: now
+        }
+      ],
+      memberships: [
+        {
+          id: "demo-mem-admin",
+          organizationId: "demo-org-global-defense",
+          userId: "demo-user-admin",
+          role: "owner",
+          createdAt: now
+        }
+      ],
       devices: [],
       documents: [],
       documentVersions: [],

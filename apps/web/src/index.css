@@ -7,3 +7,23 @@
     @apply selection:bg-brand-500 selection:text-white;
   }
 }
+
+/* Hardened Anti-Print & Anti-Capture CSS Shield */
+@media print {
+  html, body, #root, * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body::before {
+    content: "PROTECTED DOCUMENT: PRINTING, EXPORT, AND DIGITAL CAPTURE ARE STRICTLY RESTRICTED.";
+    display: block !important;
+    visibility: visible !important;
+    text-align: center;
+    padding: 120px 24px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #ef4444;
+    font-family: sans-serif;
+  }
+}
+

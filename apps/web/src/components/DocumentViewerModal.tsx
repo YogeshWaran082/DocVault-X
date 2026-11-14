@@ -68,10 +68,6 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
 
   if (!document) return null;
 
-  const hours = Math.floor(leaseSecondsRemaining / 3600);
-  const minutes = Math.floor((leaseSecondsRemaining % 3600) / 60);
-  const seconds = leaseSecondsRemaining % 60;
-
   const isExpired = leaseSecondsRemaining === 0;
   const isRevoked = document.status === 'revoked';
 
@@ -115,20 +111,8 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
             </div>
           </div>
 
-          {/* Controls: Lease countdown & Download & Close */}
+          {/* Controls: Download & Watermark & Close */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Countdown Badge */}
-            <div className="flex items-center gap-2 px-3 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-              <Clock className={`w-3.5 h-3.5 ${isExpired ? 'text-red-500 animate-pulse' : 'text-brand-600'}`} />
-              <div className="text-right">
-                <span className="text-[9px] uppercase font-bold text-slate-400 block leading-none">
-                  Restriction Lease
-                </span>
-                <span className={`text-xs font-mono font-bold ${isExpired ? 'text-red-500' : 'text-slate-800 dark:text-slate-100'}`}>
-                  {isExpired ? 'LEASE EXPIRED' : `${hours > 0 ? `${hours}h ` : ''}${minutes}m ${seconds}s`}
-                </span>
-              </div>
-            </div>
 
             {/* Quick Standard PDF Download */}
             <button

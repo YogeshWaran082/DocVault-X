@@ -48,7 +48,7 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
 
   const [contentUrl, setContentUrl] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(false);
-  const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
+  const [_remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const [errorState, setErrorState] = useState<'EXPIRED' | 'REVOKED' | 'UNAUTHORIZED' | 'ERROR' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -191,13 +191,6 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
 
   if (!isOpen) return null;
 
-  const formatTime = (totalSec: number) => {
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.floor((totalSec % 3600) / 60);
-    const s = totalSec % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
-
   const isPdf = session?.mimeType.includes('pdf') || session?.documentTitle.toLowerCase().endsWith('.pdf');
   const isImage = session?.mimeType.startsWith('image/');
 
@@ -229,20 +222,6 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {session && !errorState && (
-              <div className="flex items-center gap-2 px-3 py-1 rounded-lg border border-slate-700 bg-slate-800 shadow-sm">
-                <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                <div className="text-right">
-                  <span className="text-[9px] uppercase font-bold text-slate-400 block leading-none">
-                    Remaining
-                  </span>
-                  <span className="text-xs font-mono font-bold text-amber-300">
-                    {formatTime(remainingSeconds)}
-                  </span>
-                </div>
-              </div>
-            )}
-
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"

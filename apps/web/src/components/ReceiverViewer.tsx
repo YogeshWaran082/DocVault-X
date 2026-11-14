@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Clock, AlertTriangle, ShieldAlert, Lock, Check } from 'lucide-react';
+import { Clock, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { ApiClient } from '../api/client';
 import { PdfViewer } from './PdfViewer';
 
@@ -16,7 +16,7 @@ export const ReceiverViewer: React.FC<ReceiverViewerProps> = ({ token }) => {
     watermarkTemplate: string | null;
   } | null>(null);
 
-  const [remainingSeconds, setRemainingSeconds] = useState<number>(60);
+  const [_remainingSeconds, setRemainingSeconds] = useState<number>(60);
   const [contentUrl, setContentUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorState, setErrorState] = useState<'EXPIRED' | 'REVOKED' | 'CONFLICT' | 'ERROR' | null>(null);
@@ -155,14 +155,6 @@ export const ReceiverViewer: React.FC<ReceiverViewerProps> = ({ token }) => {
     setErrorState('REVOKED');
   };
 
-  // Format seconds into HH:MM:SS
-  const formatTime = (totalSec: number) => {
-    const hrs = Math.floor(totalSec / 3600);
-    const mins = Math.floor((totalSec % 3600) / 60);
-    const secs = totalSec % 60;
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
   // State: Loading
   if (loading) {
     return (
@@ -256,61 +248,10 @@ export const ReceiverViewer: React.FC<ReceiverViewerProps> = ({ token }) => {
   return (
     <div
       onContextMenu={(e) => e.preventDefault()}
-      className="min-h-screen flex flex-col bg-slate-950 text-white select-none"
+      className="h-screen w-screen flex flex-col bg-[#282c34] text-white select-none overflow-hidden"
     >
-      {/* Top Banner / Controls */}
-      <header className="h-16 border-b border-slate-800 bg-slate-900/90 backdrop-blur px-4 sm:px-8 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-brand-600/20 text-brand-400 flex items-center justify-center border border-brand-500/30">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-bold text-sm text-white truncate max-w-xs sm:max-w-md">
-                {session?.documentTitle}
-              </h1>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                Active
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400">View Only • Protected Browser Session</p>
-          </div>
-        </div>
-
-        {/* Live Remaining Time Countdown */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700 shadow-sm">
-            <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
-            <div className="text-right">
-              <span className="text-[9px] uppercase font-bold text-slate-400 block leading-none">
-                Remaining Access Time
-              </span>
-              <span className="text-sm font-mono font-bold text-amber-300">
-                {formatTime(remainingSeconds)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Security info strip */}
-      <div className="px-4 sm:px-8 py-1.5 bg-slate-900/50 border-b border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1 text-emerald-400">
-            <Check className="w-3 h-3" /> Server Authorization Verified
-          </span>
-          <span className="flex items-center gap-1">
-            <Lock className="w-3 h-3 text-brand-400" /> Decrypted in Memory Only
-          </span>
-        </div>
-        <span className="text-[10px] text-slate-500 hidden sm:inline">
-          Server-enforced automatic closure at expiry
-        </span>
-      </div>
-
-      {/* Main Viewport: Occupies 100% remaining viewport height */}
-      <main className="flex-1 flex flex-col min-h-0 w-full relative overflow-hidden bg-slate-950">
+      {/* Main Viewport: Full screen edge-to-edge PDF / Document Viewer matching Reference UI */}
+      <main className="flex-1 flex flex-col min-h-0 w-full h-full relative overflow-hidden">
         {contentUrl && (
           <div className="flex-1 flex flex-col min-h-0 w-full h-full relative">
             {/* Document Renderers */}
@@ -321,19 +262,21 @@ export const ReceiverViewer: React.FC<ReceiverViewerProps> = ({ token }) => {
                 watermarkText={session?.watermarkTemplate}
               />
             ) : isImage ? (
-              <div className="flex-1 flex items-center justify-center p-4 min-h-0 overflow-auto">
+              <div className="flex-1 flex items-center justify-center p-4 min-h-0 overflow-auto bg-[#525659]">
                 <img
                   src={contentUrl}
                   alt={session?.documentTitle}
-                  className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
+                  className="max-h-full max-w-full object-contain rounded shadow-2xl"
+                  onContextMenu={(e) => e.preventDefault()}
+                  onDragStart={(e) => e.preventDefault()}
                 />
               </div>
             ) : (
-              <div className="flex-1 min-h-0 w-full overflow-auto p-4 flex justify-center">
+              <div className="flex-1 min-h-0 w-full overflow-auto p-4 flex justify-center bg-[#525659]">
                 <iframe
                   src={contentUrl}
                   title={session?.documentTitle}
-                  className="w-full max-w-5xl h-full border-0 bg-slate-900 rounded-xl"
+                  className="w-full max-w-5xl h-full border-0 bg-slate-900 rounded shadow-2xl"
                 />
               </div>
             )}

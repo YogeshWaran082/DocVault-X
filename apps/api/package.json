@@ -6,7 +6,7 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "dev": "tsc -w",
-    "test": "node --test dist/**/*.test.js"
+    "test": "node --test dist/*.test.js"
   },
   "dependencies": {
     "@docvault/contracts": "workspace:*",

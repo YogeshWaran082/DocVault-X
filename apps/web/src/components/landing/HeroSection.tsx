@@ -19,13 +19,6 @@ interface HeroSectionProps {
   onExploreFeatures: () => void;
 }
 
-// Official OpenAI Vector Logo for Receipt Header
-const OpenAILogo = () => (
-  <svg className="w-12 h-12 text-black fill-current" viewBox="0 0 24 24">
-    <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.6669zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" />
-  </svg>
-);
-
 export const HeroSection: React.FC<HeroSectionProps> = ({
   onExploreFeatures,
 }) => {
@@ -140,7 +133,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
                 <div className="flex items-center gap-2 truncate">
                   <span className="font-mono font-medium text-[#f5f5f7] text-xs truncate">
-                    Receipt-2819-7625-3984.pdf
+                    Sales_Invoice_9000000001.pdf
                   </span>
                 </div>
               </div>
@@ -258,23 +251,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
                   {/* Thumbnail Card with Active Blue Outline */}
                   <div className="flex flex-col items-center">
-                    <div className="w-full p-1.5 rounded-lg border-2 border-[#0071e3] bg-white shadow-md relative group cursor-pointer overflow-hidden">
-                      {/* Mini Preview of OpenAI Receipt */}
-                      <div className="w-full aspect-[1/1.4] bg-white overflow-hidden p-2 text-[5px] text-slate-800 leading-tight select-none">
-                        <div className="flex justify-between items-start mb-1.5">
-                          <span className="font-extrabold text-[8px] text-black">Receipt</span>
-                          <div className="w-3 h-3 bg-black rounded-full flex items-center justify-center text-[5px] text-white">❖</div>
-                        </div>
-                        <div className="space-y-0.5 text-[4px] text-slate-500">
-                          <div>AADNBWQB-0001</div>
-                          <div>2819-7625-3984</div>
-                        </div>
-                        <div className="mt-2 text-[6px] font-bold text-black">₹0.00 paid</div>
-                        <div className="space-y-0.5 mt-2">
-                          <div className="w-full h-0.5 bg-slate-200" />
-                          <div className="w-5/6 h-0.5 bg-slate-200" />
-                          <div className="w-4/6 h-0.5 bg-slate-200" />
-                        </div>
+                    <div className="w-full p-1 rounded-lg border-2 border-[#0071e3] bg-white shadow-md relative group cursor-pointer overflow-hidden">
+                      <div className="w-full aspect-[1/1.4] bg-white overflow-hidden select-none">
+                        <img
+                          src="/stripesshop-sales-invoice.jpg"
+                          alt="Invoice Preview"
+                          className="w-full h-full object-cover object-top select-none pointer-events-none"
+                        />
                       </div>
                     </div>
                     {/* Active Page Badge */}
@@ -287,12 +270,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
               {/* Main Document Viewport */}
               <div className="flex-1 p-4 sm:p-8 flex items-center justify-center overflow-auto bg-[#0a0a0c] relative">
-                {/* Authentic Document Sheet (OpenAI Receipt - Receipt-2819-7625-3984.pdf) */}
+                {/* Authentic Document Sheet (StripesShop Sales Invoice) */}
                 <div
-                  className="relative w-full max-w-2xl bg-white text-slate-900 rounded-sm shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] p-6 sm:p-12 transition-transform duration-300 select-none overflow-hidden border border-slate-200/60"
+                  className="relative w-full max-w-2xl bg-white text-slate-900 rounded-sm shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] transition-transform duration-300 select-none overflow-hidden border border-slate-200/60"
                   style={{ transform: `scale(${mockZoom / 100})`, transformOrigin: 'top center' }}
                 >
-                  {/* Dynamic Forensic Watermark Overlay (Image 3: designer2.rthinfotech@gmail.com • IP: 157.49.201.12) */}
+                  {/* Dynamic Forensic Watermark Overlay */}
                   {mockWatermark && (
                     <div className="absolute inset-0 pointer-events-none z-30 flex flex-col justify-around opacity-[0.16] select-none transform -rotate-[22deg] scale-125">
                       {[1, 2, 3, 4, 5, 6].map((row) => (
@@ -306,120 +289,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     </div>
                   )}
 
-                  {/* Document Header: Receipt title & OpenAI swirl Logo */}
-                  <div className="flex items-start justify-between mb-6">
-                    <div>
-                      <h2 className="text-3xl sm:text-4xl font-extrabold text-black tracking-tight font-sans">
-                        Receipt
-                      </h2>
-                      <div className="mt-4 space-y-1.5 text-xs text-slate-900">
-                        <div className="flex items-center gap-4">
-                          <span className="font-semibold text-slate-900 w-32">Invoice number</span>
-                          <span className="font-medium text-slate-800">AADNBWQB-0001</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-semibold text-slate-900 w-32">Receipt number</span>
-                          <span className="font-medium text-slate-800">2819-7625-3984</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-semibold text-slate-900 w-32">Date paid</span>
-                          <span className="text-slate-800">October 23, 2026</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-1">
-                      <OpenAILogo />
-                    </div>
-                  </div>
-
-                  {/* Two-Column Addresses: OpenAI OpCo, LLC & Bill to Danel */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 my-8 text-xs text-slate-800">
-                    {/* OpenAI Address */}
-                    <div className="space-y-1 leading-relaxed">
-                      <div className="font-bold text-black text-sm">OpenAI OpCo, LLC</div>
-                      <div>1455 3rd Street</div>
-                      <div>San Francisco, California 94158</div>
-                      <div>United States</div>
-                      <div className="text-slate-700">ar@openai.com</div>
-                      <div className="text-[11px] text-slate-600 pt-1 font-mono">IN GST 9925USA29095OS3</div>
-                    </div>
-
-                    {/* Bill To */}
-                    <div className="space-y-1 leading-relaxed">
-                      <div className="font-bold text-black text-sm">Bill to</div>
-                      <div className="font-medium text-black">Danel</div>
-                      <div>49a, 3rd St</div>
-                      <div>Elumalai Nagar, Annai Theresa Nagar, Madipakkam</div>
-                      <div>Chennai 600091</div>
-                      <div>Tamil Nadu</div>
-                      <div>India</div>
-                      <div className="text-slate-700 font-medium">designer2.rthinfotech@gmail.com</div>
-                    </div>
-                  </div>
-
-                  {/* Total Paid Headline */}
-                  <div className="my-8 pt-4 pb-2">
-                    <div className="text-2xl sm:text-3xl font-extrabold text-black font-sans">
-                      ₹0.00 paid on October 23, 2026
-                    </div>
-                  </div>
-
-                  {/* Subscription Line Items Table */}
-                  <div className="my-6">
-                    {/* Table Header with thin bottom border */}
-                    <div className="pb-2 border-b border-slate-300 flex justify-between items-center text-xs text-slate-600 font-medium">
-                      <span className="w-1/2">Description</span>
-                      <span className="w-1/6 text-center">Qty</span>
-                      <span className="w-1/6 text-right">Unit price</span>
-                      <span className="w-1/6 text-right">Amount</span>
-                    </div>
-
-                    {/* Table Row */}
-                    <div className="py-3 flex justify-between items-start text-xs text-slate-900 border-b border-slate-100">
-                      <div className="w-1/2 pr-2">
-                        <div className="font-medium text-black">ChatGPT Plus Subscription (per seat)</div>
-                        <div className="text-[11px] text-slate-500">Oct 23–Nov 23, 2026</div>
-                      </div>
-                      <div className="w-1/6 text-center text-slate-800">1</div>
-                      <div className="w-1/6 text-right text-slate-800">₹1,694.07</div>
-                      <div className="w-1/6 text-right font-medium text-black">₹1,694.07</div>
-                    </div>
-
-                    {/* Subtotals & Free Trial Discount */}
-                    <div className="mt-4 flex flex-col items-end text-xs space-y-1.5">
-                      <div className="flex justify-between w-64 text-slate-700 py-0.5 border-b border-slate-100">
-                        <span>Subtotal</span>
-                        <span className="font-medium text-black">₹1,694.07</span>
-                      </div>
-                      <div className="flex justify-between w-full max-w-md text-slate-700 py-0.5 border-b border-slate-100">
-                        <span className="text-right flex-1 pr-3">ChatGPT Plus - 1 Month Free Trial (100% off)</span>
-                        <span className="font-medium text-black">-₹1,694.07</span>
-                      </div>
-                      <div className="flex justify-between w-64 text-slate-950 font-bold text-sm pt-1">
-                        <span>Total</span>
-                        <span>₹0.00</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Payment History Section */}
-                  <div className="mt-12 pt-6">
-                    <h3 className="text-lg font-bold text-black mb-4">
-                      Payment history
-                    </h3>
-                    <div className="pb-2 border-b border-slate-900 flex justify-between items-center text-xs text-slate-700 font-medium">
-                      <span className="w-1/4">Payment method</span>
-                      <span className="w-1/4 text-center">Date</span>
-                      <span className="w-1/4 text-center">Amount paid</span>
-                      <span className="w-1/4 text-right">Receipt number</span>
-                    </div>
-                  </div>
-
-                  {/* Bottom Page Number */}
-                  <div className="mt-28 flex justify-end text-[11px] text-slate-500">
-                    <span>Page 1 of 1</span>
-                  </div>
+                  {/* Rendered Invoice Image */}
+                  <img
+                    src="/stripesshop-sales-invoice.jpg"
+                    alt="Sales Invoice #9000000001"
+                    className="w-full h-auto block select-none pointer-events-none"
+                  />
                 </div>
 
                 {/* Floating Security Badge 1: Top Right - Apple Frosted Style */}

@@ -28,6 +28,34 @@
   box-shadow: 0 10px 30px -10px rgba(45, 212, 191, 0.15);
 }
 
+/* Orange Glow & Wave Animation Utilities */
+.glow-orange {
+  box-shadow: 0 0 30px -5px rgba(255, 106, 0, 0.4);
+}
+
+.glow-orange-lg {
+  box-shadow: 0 0 60px -10px rgba(255, 106, 0, 0.35);
+}
+
+@keyframes waveDrift {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-6px) scale(1.01);
+  }
+}
+
+.animate-wave-drift {
+  animation: waveDrift 10s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-wave-drift {
+    animation: none;
+  }
+}
+
 /* Subtle glow utility */
 .glow-teal {
   box-shadow: 0 0 25px -5px rgba(45, 212, 191, 0.35);

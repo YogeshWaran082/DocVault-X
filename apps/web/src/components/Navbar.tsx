@@ -10,6 +10,7 @@ interface NavbarProps {
   onOpenUpload: () => void;
   onOpenDvx: () => void;
   onLogout: () => void;
+  onGoToLanding?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -19,14 +20,19 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleDarkMode,
   onOpenUpload,
   onOpenDvx,
-  onLogout
+  onLogout,
+  onGoToLanding
 }) => {
   return (
     <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-sky-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+        <div
+          onClick={onGoToLanding}
+          className="flex items-center gap-3 cursor-pointer group select-none"
+          title="Click to view Public Landing Page"
+        >
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-sky-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20 group-hover:scale-105 transition">
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>

@@ -8,6 +8,10 @@
     "lint": "pnpm -r run lint"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.2.3",
+    "@capacitor/cli": "^6.2.3",
+    "@capacitor/core": "^6.2.3",
+    "@capacitor/ios": "^6.2.3",
     "typescript": "^5.4.5"
   }
 }

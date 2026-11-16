@@ -41,39 +41,39 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
   };
 
   return (
-    <footer className="bg-[#070D18] border-t border-slate-800 text-slate-400 text-xs relative">
+    <footer className="bg-[#000000] border-t border-white/10 text-[#86868b] text-xs relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
           {/* Col 1 & 2: Brand & Mission */}
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[#17253A] border border-[#2DD4BF]/30 flex items-center justify-center text-[#2DD4BF]">
-                <ShieldCheck className="w-5 h-5" />
+              <div className="w-8 h-8 rounded-xl bg-[#161617] border border-[#333336] flex items-center justify-center text-[#2997ff]">
+                <ShieldCheck className="w-4 h-4" />
               </div>
-              <span className="font-extrabold text-lg text-white tracking-tight">
-                DocVault <span className="text-[#2DD4BF]">X</span> PDF Viewer
+              <span className="font-semibold text-base text-[#f5f5f7] tracking-tight">
+                DocVault <span className="text-[#2997ff]">X</span> PDF Viewer
               </span>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed max-w-sm">
+            <p className="text-xs text-[#86868b] leading-relaxed max-w-sm">
               Universal, high-assurance document viewer for reading PDFs and protected containers with hardware-accelerated privacy, dynamic forensic watermarks, and zero unencrypted disk footprint.
             </p>
 
-            <div className="pt-2 text-[11px] font-mono text-slate-400 space-y-1">
+            <div className="pt-2 text-[11px] font-mono text-[#6e6e73] space-y-1">
               <div>Cryptographic Standard: AES-256-GCM AEAD</div>
               <div>Digital Signatures: Ed25519 Verified Policies</div>
             </div>
 
             {/* Social Icons with innocent Facebook logo as secret admin gate */}
-            <div className="pt-2 flex items-center gap-3">
+            <div className="pt-2 flex items-center gap-2.5">
               {/* Facebook Logo (Secret: 3 clicks triggers admin) - No title, no aria-label tooltip, no focus ring */}
               <button
                 type="button"
                 onClick={handleFacebookClick}
-                className="w-9 h-9 rounded-xl bg-[#17253A] border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 focus:border-slate-700 active:outline-none select-none ring-0 shadow-none"
+                className="w-8 h-8 rounded-full bg-[#161617] border border-[#333336] text-[#86868b] hover:text-[#f5f5f7] hover:border-[#424245] flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 active:outline-none select-none ring-0 shadow-none"
                 style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
               >
-                <svg className="w-4 h-4 fill-current pointer-events-none" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 fill-current pointer-events-none" viewBox="0 0 24 24">
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
               </button>
@@ -82,10 +82,10 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
               <button
                 type="button"
                 onClick={(e) => e.preventDefault()}
-                className="w-9 h-9 rounded-xl bg-[#17253A] border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white hover:border-slate-500 transition-colors outline-none focus:outline-none focus:ring-0 select-none ring-0 shadow-none"
+                className="w-8 h-8 rounded-full bg-[#161617] border border-[#333336] flex items-center justify-center text-[#86868b] hover:text-[#f5f5f7] hover:border-[#424245] transition-colors outline-none focus:outline-none focus:ring-0 select-none ring-0 shadow-none"
                 style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
               >
-                <svg className="w-3.5 h-3.5 fill-current pointer-events-none" viewBox="0 0 24 24">
+                <svg className="w-3 h-3 fill-current pointer-events-none" viewBox="0 0 24 24">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
               </button>
@@ -94,10 +94,10 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
               <button
                 type="button"
                 onClick={(e) => e.preventDefault()}
-                className="w-9 h-9 rounded-xl bg-[#17253A] border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white hover:border-slate-500 transition-colors outline-none focus:outline-none focus:ring-0 select-none ring-0 shadow-none"
+                className="w-8 h-8 rounded-full bg-[#161617] border border-[#333336] flex items-center justify-center text-[#86868b] hover:text-[#f5f5f7] hover:border-[#424245] transition-colors outline-none focus:outline-none focus:ring-0 select-none ring-0 shadow-none"
                 style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
               >
-                <svg className="w-4 h-4 fill-current pointer-events-none" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 fill-current pointer-events-none" viewBox="0 0 24 24">
                   <path
                     fillRule="evenodd"
                     clipRule="evenodd"
@@ -110,10 +110,10 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
               <button
                 type="button"
                 onClick={(e) => e.preventDefault()}
-                className="w-9 h-9 rounded-xl bg-[#17253A] border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white hover:border-slate-500 transition-colors outline-none focus:outline-none focus:ring-0 select-none ring-0 shadow-none"
+                className="w-8 h-8 rounded-full bg-[#161617] border border-[#333336] flex items-center justify-center text-[#86868b] hover:text-[#f5f5f7] hover:border-[#424245] transition-colors outline-none focus:outline-none focus:ring-0 select-none ring-0 shadow-none"
                 style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
               >
-                <svg className="w-3.5 h-3.5 fill-current pointer-events-none" viewBox="0 0 24 24">
+                <svg className="w-3 h-3 fill-current pointer-events-none" viewBox="0 0 24 24">
                   <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
                 </svg>
               </button>
@@ -122,7 +122,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
 
           {/* Col 3: Product Navigation */}
           <div className="space-y-3">
-            <h4 className="text-white font-bold text-sm tracking-wide">Product</h4>
+            <h4 className="text-[#f5f5f7] font-semibold text-xs tracking-wider uppercase">Product</h4>
             <ul className="space-y-2">
               <li>
                 <a href="#downloads" className="hover:text-white transition hover:underline">
@@ -154,7 +154,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
 
           {/* Col 4: Security & Compliance */}
           <div className="space-y-3">
-            <h4 className="text-white font-bold text-sm tracking-wide">Security Architecture</h4>
+            <h4 className="text-[#f5f5f7] font-semibold text-xs tracking-wider uppercase">Security Architecture</h4>
             <ul className="space-y-2">
               <li>
                 <a href="#security" className="hover:text-white transition hover:underline">
@@ -186,7 +186,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
 
           {/* Col 5: Legal & Privacy */}
           <div className="space-y-3">
-            <h4 className="text-white font-bold text-sm tracking-wide">Legal & Privacy</h4>
+            <h4 className="text-[#f5f5f7] font-semibold text-xs tracking-wider uppercase">Legal & Privacy</h4>
             <ul className="space-y-2">
               <li>
                 <a href="#faq" className="hover:text-white transition hover:underline">
@@ -213,7 +213,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-14 pt-8 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-300">
+        <div className="mt-14 pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-[#6e6e73]">
           <div>
             &copy; {new Date().getFullYear()} DocVault X Platform. All cryptographic standards and architectural rights reserved.
           </div>
@@ -221,10 +221,10 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
           <div className="flex items-center gap-4">
             <button
               onClick={scrollToTop}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#17253A] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#161617] hover:bg-[#1d1d1f] text-[#86868b] hover:text-white border border-[#333336] transition"
             >
               <span>Back to Top</span>
-              <ArrowUp className="w-3.5 h-3.5" />
+              <ArrowUp className="w-3 h-3" />
             </button>
           </div>
         </div>

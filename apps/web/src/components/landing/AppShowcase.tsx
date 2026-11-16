@@ -21,34 +21,34 @@ export const AppShowcase: React.FC = () => {
   ] as const;
 
   return (
-    <section id="features" className="py-24 bg-[#0A1222] relative overflow-hidden">
+    <section id="features" className="py-24 bg-[#000000] border-t border-white/10 relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto space-y-4 mb-14">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#17253A] border border-[#2DD4BF]/30 text-[#2DD4BF] text-xs font-bold uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#1d1d1f] border border-[#424245] text-[#2997ff] text-xs font-medium tracking-wide">
             <Eye className="w-3.5 h-3.5" />
-            <span>AUTHENTIC INTERFACES</span>
+            <span className="uppercase text-[11px] font-semibold">AUTHENTIC INTERFACES</span>
           </div>
 
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+          <h2 className="text-3xl sm:text-5xl font-bold text-[#f5f5f7] tracking-tight">
             Application Showcase
           </h2>
 
-          <p className="text-base sm:text-lg text-slate-300">
+          <p className="text-base sm:text-lg text-[#86868b]">
             Explore the real UI components powering DocVault X across desktops, mobile devices, and secure enterprise vaults.
           </p>
         </div>
 
-        {/* Tab Controls */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
+        {/* Tab Controls - Apple Segment Control Style */}
+        <div className="flex flex-wrap items-center justify-center gap-1.5 p-1.5 bg-[#161617] border border-[#333336] rounded-full max-w-2xl mx-auto mb-10 shadow-lg">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all duration-200 ${
                 activeTab === tab.id
-                  ? 'bg-[#2DD4BF] text-[#0A1222] shadow-lg shadow-[#2DD4BF]/20 scale-105'
-                  : 'bg-[#17253A] text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
+                  ? 'bg-[#0071e3] text-white shadow-sm'
+                  : 'text-[#86868b] hover:text-[#f5f5f7] hover:bg-white/5'
               }`}
             >
               {tab.icon}
@@ -58,7 +58,7 @@ export const AppShowcase: React.FC = () => {
         </div>
 
         {/* Showcase Canvas Frame */}
-        <div className="rounded-3xl bg-[#17253A]/90 border border-slate-700 p-4 sm:p-8 shadow-2xl overflow-hidden min-h-[520px]">
+        <div className="rounded-3xl bg-[#161617] border border-[#333336] p-4 sm:p-8 shadow-2xl overflow-hidden min-h-[520px]">
           {/* TAB 1: Desktop PDF Viewer */}
           {activeTab === 'desktop' && (
             <div className="space-y-4 animate-in fade-in duration-300">
@@ -178,25 +178,25 @@ export const AppShowcase: React.FC = () => {
           {/* TAB 2: Mobile Secure Viewer */}
           {activeTab === 'mobile' && (
             <div className="flex flex-col items-center justify-center py-4 animate-in fade-in duration-300">
-              <div className="w-full max-w-xs rounded-[36px] bg-[#0A1222] border-4 border-slate-700 p-4 shadow-2xl relative">
+              <div className="w-full max-w-xs rounded-[40px] bg-[#161617] border-4 border-[#333336] p-4 shadow-2xl relative">
                 {/* Mobile Camera Notch */}
-                <div className="w-28 h-4 bg-slate-800 rounded-full mx-auto mb-4" />
+                <div className="w-24 h-4 bg-[#000000] rounded-full mx-auto mb-4" />
 
                 {/* Mobile Header Bar */}
-                <div className="flex items-center justify-between text-xs text-white pb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <ShieldCheck className="w-4 h-4 text-[#2DD4BF]" />
+                <div className="flex items-center justify-between text-xs text-[#f5f5f7] pb-3 border-b border-[#333336]">
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <ShieldCheck className="w-4 h-4 text-[#2997ff]" />
                     <span>DocVault Mobile</span>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                     FLAG_SECURE
                   </span>
                 </div>
 
                 {/* Mobile Screen Content */}
-                <div className="my-4 bg-white text-slate-900 rounded-xl p-4 shadow min-h-[300px] flex flex-col justify-between relative overflow-hidden">
+                <div className="my-4 bg-white text-slate-900 rounded-2xl p-4 shadow min-h-[300px] flex flex-col justify-between relative overflow-hidden">
                   <div className="space-y-2">
-                    <div className="text-[9px] font-mono font-bold text-teal-700 uppercase">
+                    <div className="text-[9px] font-mono font-bold text-[#0071e3] uppercase">
                       SECURE MOBILE LEASE
                     </div>
                     <h5 className="text-xs font-bold text-slate-900">Q4 Executive Financials</h5>
@@ -212,8 +212,8 @@ export const AppShowcase: React.FC = () => {
                 </div>
 
                 {/* Bottom Navigation Pill */}
-                <div className="flex items-center justify-around pt-2 text-xs text-slate-400">
-                  <span className="text-[#2DD4BF] font-semibold text-[11px]">Overview</span>
+                <div className="flex items-center justify-around pt-2 text-xs text-[#86868b]">
+                  <span className="text-[#2997ff] font-semibold text-[11px]">Overview</span>
                   <span className="text-[11px]">Pages (1/4)</span>
                   <span className="text-[11px]">Shield Active</span>
                 </div>
@@ -224,15 +224,15 @@ export const AppShowcase: React.FC = () => {
           {/* TAB 3: Document Library & Vault */}
           {activeTab === 'library' && (
             <div className="space-y-4 animate-in fade-in duration-300">
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#333336] text-xs">
                 <div>
-                  <h4 className="text-sm font-bold text-white">Protected Document Vault</h4>
-                  <p className="text-slate-400 text-[11px]">
+                  <h4 className="text-sm font-semibold text-[#f5f5f7]">Protected Document Vault</h4>
+                  <p className="text-[#86868b] text-[11px]">
                     Manage tenant files, cryptographic policies, and expiring share tokens.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-lg bg-[#0A1222] border border-slate-700 text-slate-300 font-mono text-[11px]">
+                  <span className="px-3 py-1 rounded-full bg-[#161617] border border-[#333336] text-[#86868b] font-mono text-[11px]">
                     3 Active Documents
                   </span>
                 </div>
@@ -265,27 +265,27 @@ export const AppShowcase: React.FC = () => {
                 ].map((doc, idx) => (
                   <div
                     key={idx}
-                    className="p-4 rounded-xl bg-[#0A1222] border border-slate-800 hover:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+                    className="p-4 rounded-2xl bg-[#161617] border border-[#333336] hover:border-[#424245] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-[#17253A] border border-slate-700 flex items-center justify-center text-[#2DD4BF]">
+                      <div className="w-9 h-9 rounded-full bg-[#1d1d1f] border border-[#333336] flex items-center justify-center text-[#2997ff]">
                         <FileText className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="font-bold text-white">{doc.title}</div>
-                        <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
+                        <div className="font-semibold text-[#f5f5f7]">{doc.title}</div>
+                        <div className="text-[11px] text-[#86868b] font-mono flex items-center gap-2">
                           <span>{doc.size}</span>
                           <span>•</span>
-                          <span className="text-[#2DD4BF]">{doc.policy}</span>
+                          <span className="text-[#2997ff]">{doc.policy}</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#17253A] text-slate-300 border border-slate-700">
+                      <span className="font-mono text-[10px] px-2.5 py-0.5 rounded-full bg-[#1d1d1f] text-[#86868b] border border-[#333336]">
                         {doc.status}
                       </span>
-                      <button className="p-1.5 rounded-lg bg-[#17253A] text-slate-300 hover:text-white border border-slate-700">
+                      <button className="p-1.5 rounded-full bg-[#1d1d1f] text-[#86868b] hover:text-white border border-[#333336] transition-colors">
                         <Share2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -298,37 +298,37 @@ export const AppShowcase: React.FC = () => {
           {/* TAB 4: Protected DVX Viewer */}
           {activeTab === 'dvx' && (
             <div className="space-y-4 animate-in fade-in duration-300">
-              <div className="p-4 rounded-xl bg-[#0A1222] border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="p-5 rounded-2xl bg-[#161617] border border-[#333336] space-y-4">
+                <div className="flex items-center justify-between border-b border-[#333336] pb-3">
                   <div className="flex items-center gap-2">
-                    <FileBox className="w-5 h-5 text-[#2DD4BF]" />
-                    <span className="font-bold text-white text-sm">.DVX Standalone Container Inspection</span>
+                    <FileBox className="w-5 h-5 text-[#2997ff]" />
+                    <span className="font-semibold text-[#f5f5f7] text-sm">.DVX Standalone Container Inspection</span>
                   </div>
-                  <span className="font-mono text-xs text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+                  <span className="font-mono text-xs text-emerald-400 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30">
                     CRYPTOGRAPHICALLY VALID
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                  <div className="p-3 rounded-lg bg-[#17253A] border border-slate-700">
-                    <div className="text-[10px] text-slate-400 font-mono">Container Header</div>
-                    <div className="font-bold text-white mt-1">DVX1 Magic (CBOR)</div>
+                  <div className="p-3.5 rounded-xl bg-[#1d1d1f] border border-[#333336]">
+                    <div className="text-[10px] text-[#86868b] font-mono">Container Header</div>
+                    <div className="font-semibold text-[#f5f5f7] mt-1">DVX1 Magic (CBOR)</div>
                   </div>
-                  <div className="p-3 rounded-lg bg-[#17253A] border border-slate-700">
-                    <div className="text-[10px] text-slate-400 font-mono">Authenticated Cipher</div>
-                    <div className="font-bold text-white mt-1">AES-256-GCM (64KB)</div>
+                  <div className="p-3.5 rounded-xl bg-[#1d1d1f] border border-[#333336]">
+                    <div className="text-[10px] text-[#86868b] font-mono">Authenticated Cipher</div>
+                    <div className="font-semibold text-[#f5f5f7] mt-1">AES-256-GCM (64KB)</div>
                   </div>
-                  <div className="p-3 rounded-lg bg-[#17253A] border border-slate-700">
-                    <div className="text-[10px] text-slate-400 font-mono">Payload Chunks</div>
-                    <div className="font-bold text-[#2DD4BF] mt-1">142 Authenticated Chunks</div>
+                  <div className="p-3.5 rounded-xl bg-[#1d1d1f] border border-[#333336]">
+                    <div className="text-[10px] text-[#86868b] font-mono">Payload Chunks</div>
+                    <div className="font-semibold text-[#2997ff] mt-1">142 Authenticated Chunks</div>
                   </div>
-                  <div className="p-3 rounded-lg bg-[#17253A] border border-slate-700">
-                    <div className="text-[10px] text-slate-400 font-mono">Digital Signature</div>
-                    <div className="font-bold text-emerald-400 mt-1">Ed25519 Verified</div>
+                  <div className="p-3.5 rounded-xl bg-[#1d1d1f] border border-[#333336]">
+                    <div className="text-[10px] text-[#86868b] font-mono">Digital Signature</div>
+                    <div className="font-semibold text-emerald-400 mt-1">Ed25519 Verified</div>
                   </div>
                 </div>
 
-                <p className="text-xs text-slate-300 leading-relaxed">
+                <p className="text-xs text-[#86868b] leading-relaxed">
                   The .dvx container format allows distribution of high-security files through public channels (email, cloud drives, USB) while maintaining zero-trust offline access policies.
                 </p>
               </div>

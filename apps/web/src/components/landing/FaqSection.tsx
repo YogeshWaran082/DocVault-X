@@ -43,20 +43,20 @@ export const FaqSection: React.FC = () => {
   ];
 
   return (
-    <section id="faq" className="py-24 bg-[#0A1222] border-t border-slate-800/80 relative">
+    <section id="faq" className="py-24 bg-[#000000] border-t border-white/10 relative">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Section Header */}
         <div className="text-center space-y-4 mb-16">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#17253A] border border-[#2DD4BF]/30 text-[#2DD4BF] text-xs font-bold uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#1d1d1f] border border-[#424245] text-[#2997ff] text-xs font-medium tracking-wide">
             <HelpCircle className="w-3.5 h-3.5" />
-            <span>CLARITY & ARCHITECTURE</span>
+            <span className="uppercase text-[11px] font-semibold">CLARITY & ARCHITECTURE</span>
           </div>
 
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+          <h2 className="text-3xl sm:text-5xl font-bold text-[#f5f5f7] tracking-tight">
             Frequently Asked Questions
           </h2>
 
-          <p className="text-base sm:text-lg text-slate-300">
+          <p className="text-base sm:text-lg text-[#86868b]">
             Clear technical answers regarding document privacy, cryptographic standards, and platform capabilities.
           </p>
         </div>
@@ -68,19 +68,19 @@ export const FaqSection: React.FC = () => {
             return (
               <div
                 key={index}
-                className="rounded-2xl bg-[#17253A]/60 border border-slate-700/70 overflow-hidden transition-all duration-200"
+                className="rounded-3xl bg-[#161617] border border-[#333336] overflow-hidden transition-all duration-200"
               >
                 <button
                   onClick={() => setOpenIndex(isOpen ? null : index)}
-                  className="w-full p-6 text-left flex items-center justify-between gap-4 focus:outline-none focus:ring-2 focus:ring-[#2DD4BF]/40"
+                  className="w-full p-6 text-left flex items-center justify-between gap-4 focus:outline-none"
                   aria-expanded={isOpen}
                 >
-                  <span className="font-bold text-white text-base sm:text-lg">
+                  <span className="font-semibold text-[#f5f5f7] text-base sm:text-lg">
                     {faq.question}
                   </span>
                   <div
-                    className={`w-8 h-8 rounded-full bg-[#0A1222] border border-slate-700 flex items-center justify-center shrink-0 transition-transform duration-200 ${
-                      isOpen ? 'rotate-180 text-[#2DD4BF] border-[#2DD4BF]/40' : 'text-slate-400'
+                    className={`w-8 h-8 rounded-full bg-[#1d1d1f] border border-[#424245] flex items-center justify-center shrink-0 transition-transform duration-200 ${
+                      isOpen ? 'rotate-180 text-[#2997ff] border-[#2997ff]/40' : 'text-[#86868b]'
                     }`}
                   >
                     <ChevronDown className="w-4 h-4" />
@@ -88,7 +88,7 @@ export const FaqSection: React.FC = () => {
                 </button>
 
                 {isOpen && (
-                  <div className="px-6 pb-6 pt-1 text-xs sm:text-sm text-slate-300 leading-relaxed border-t border-slate-700/50 animate-in fade-in duration-200">
+                  <div className="px-6 pb-6 pt-1 text-xs sm:text-sm text-[#a1a1a6] leading-relaxed border-t border-[#333336] animate-in fade-in duration-200">
                     {faq.answer}
                   </div>
                 )}

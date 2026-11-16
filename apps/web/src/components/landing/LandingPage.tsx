@@ -27,7 +27,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#0A1222] text-slate-100 font-sans selection:bg-[#2DD4BF] selection:text-[#0A1222] overflow-x-hidden">
+    <div className="min-h-screen bg-[#000000] text-[#f5f5f7] font-sans selection:bg-[#0071e3] selection:text-white overflow-x-hidden">
       {/* Fixed Sticky Navigation */}
       <LandingNav
         isAuthenticated={isAuthenticated}

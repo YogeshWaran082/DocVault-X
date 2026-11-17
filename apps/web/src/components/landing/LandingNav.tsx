@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Menu, X, Download } from 'lucide-react';
+import { ShieldCheck, Menu, X, LogIn, LayoutDashboard, Contrast } from 'lucide-react';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface LandingNavProps {
   isAuthenticated?: boolean;
+  onTryApp: () => void;
+  onOpenLogin: () => void;
+  onOpenDashboard: () => void;
 }
 
-export const LandingNav: React.FC<LandingNavProps> = () => {
+export const LandingNav: React.FC<LandingNavProps> = ({
+  isAuthenticated,
+  onTryApp,
+  onOpenLogin,
+  onOpenDashboard,
+}) => {
+  const { isDark, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -22,21 +32,12 @@ export const LandingNav: React.FC<LandingNavProps> = () => {
     { label: 'Supported Files', href: '#formats' },
     { label: 'Security', href: '#security' },
     { label: 'How It Works', href: '#how-it-works' },
-    { label: 'Downloads', href: '#downloads' },
     { label: 'FAQ', href: '#faq' },
   ];
 
   const handleLinkClick = (href: string) => {
     setMobileMenuOpen(false);
     const element = document.querySelector(href);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const handleDownloadClick = () => {
-    setMobileMenuOpen(false);
-    const element = document.querySelector('#downloads');
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
     }
@@ -75,7 +76,7 @@ export const LandingNav: React.FC<LandingNavProps> = () => {
         </a>
 
         {/* Desktop Nav Links */}
-        <nav className="hidden lg:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
           {navLinks.map((link) => (
             <button
               key={link.label}
@@ -87,25 +88,33 @@ export const LandingNav: React.FC<LandingNavProps> = () => {
           ))}
         </nav>
 
-        {/* Desktop Action: Solid White Pill CTA */}
-        <div className="hidden sm:flex items-center gap-3">
+        <div className="hidden lg:flex items-center gap-2">
           <button
-            onClick={handleDownloadClick}
-            className="flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold text-black bg-white hover:bg-neutral-100 shadow-[0_2px_15px_rgba(255,255,255,0.15)] transition-all duration-200 active:scale-95 focus:outline-none"
+            onClick={onTryApp}
+            className="rounded-lg px-4 py-2 text-xs font-medium text-neutral-400 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A00]"
           >
-            <Download className="w-3.5 h-3.5 text-black stroke-[2.5]" />
-            <span>Download App</span>
+            Try the App
+          </button>
+          <button onClick={toggleTheme} aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`} title={`Appearance: ${isDark ? 'Dark' : 'Light'}`} className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-neutral-400 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A00]">
+            <Contrast className="h-4 w-4" />
+          </button>
+          <button
+            onClick={isAuthenticated ? onOpenDashboard : onOpenLogin}
+            className="flex items-center gap-2 rounded-full bg-white px-5 py-2 text-xs font-semibold text-black shadow-[0_2px_15px_rgba(255,255,255,0.15)] transition-all duration-200 hover:bg-neutral-100 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A00]"
+          >
+            {isAuthenticated ? <LayoutDashboard className="h-3.5 w-3.5" /> : <LogIn className="h-3.5 w-3.5" />}
+            <span>{isAuthenticated ? 'Open Vault' : 'Sign in'}</span>
           </button>
         </div>
 
-        {/* Mobile Hamburger & Quick Action */}
-        <div className="flex items-center gap-2 lg:hidden">
+        {/* Mobile navigation trigger */}
+        <div className="ml-auto flex items-center gap-2 lg:hidden">
           <button
-            onClick={handleDownloadClick}
-            className="sm:hidden flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-black bg-white"
+            onClick={isAuthenticated ? onOpenDashboard : onOpenLogin}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-black bg-white active:scale-95 transition-transform"
           >
-            <Download className="w-3 h-3 text-black stroke-[2.5]" />
-            <span>Download</span>
+            <span>{isAuthenticated ? 'Vault' : 'Sign in'}</span>
+            {isAuthenticated ? <LayoutDashboard className="h-3 w-3" /> : <LogIn className="h-3 w-3" />}
           </button>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -132,15 +141,24 @@ export const LandingNav: React.FC<LandingNavProps> = () => {
             ))}
           </nav>
 
+          <button onClick={toggleTheme} className="flex w-full items-center justify-between rounded-xl px-4 py-2 text-left text-xs text-neutral-400 transition hover:bg-white/5 hover:text-white">
+            <span>Appearance</span><span className="flex items-center gap-2"><Contrast className="h-4 w-4" />{isDark ? 'Dark' : 'Light'}</span>
+          </button>
+
           <div className="pt-3 border-t border-white/10">
             <button
-              onClick={handleDownloadClick}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-semibold text-black bg-white hover:bg-neutral-100 shadow-md transition active:scale-98"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                if (isAuthenticated) onOpenDashboard();
+                else onOpenLogin();
+              }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-semibold text-black bg-white hover:bg-neutral-100 transition active:scale-[0.98]"
             >
-              <Download className="w-4 h-4 text-black stroke-[2.5]" />
-              <span>Download App</span>
+              <span>{isAuthenticated ? 'Open Vault' : 'Sign in securely'}</span>
+              {isAuthenticated ? <LayoutDashboard className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
             </button>
           </div>
+
         </div>
       )}
     </header>

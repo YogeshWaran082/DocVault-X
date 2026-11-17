@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import * as crypto from 'node:crypto';
+import * as jwt from 'jsonwebtoken';
 import { db } from '../storage/db.js';
 import { vault } from '../storage/vault.js';
+import { JWT_SECRET } from '../middleware/auth.js';
 import { DvxContainerParser } from '@docvault/file-format';
 import { z } from 'zod';
 
@@ -82,16 +84,18 @@ dvxRouter.post('/authorize', (req: Request, res: Response) => {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const rawJwt = authHeader.substring(7);
     try {
-      const parts = rawJwt.split('.');
-      if (parts.length === 3 && parts[1]) {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-        if (payload.organizationId === doc.organizationId) {
+      const payload = jwt.verify(rawJwt, JWT_SECRET) as {
+        userId: string;
+        organizationId: string;
+      };
+      const user = db.findUserById(payload.userId);
+      const membership = user ? db.findMembership(doc.organizationId, user.id) : undefined;
+      if (user && membership && payload.organizationId === doc.organizationId) {
           authorized = true;
           const policy = db.getActivePolicy(doc.id);
           const leaseSec = policy ? policy.offlineLeaseSeconds : 3600;
           expiresAt = new Date(Date.now() + leaseSec * 1000).toISOString();
           watermarkTemplate = policy?.watermarkTemplate || null;
-        }
       }
     } catch {
       // Ignored

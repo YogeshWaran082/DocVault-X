@@ -8,6 +8,10 @@ import { RegisterRequestSchema, LoginRequestSchema, RefreshRequestSchema, UserRo
 export const authRouter = Router();
 
 authRouter.post('/register', async (req, res: Response) => {
+  if (process.env['NODE_ENV'] !== 'test' && process.env['ALLOW_PUBLIC_REGISTRATION'] !== 'true') {
+    return res.status(403).json({ error: 'Public registration is disabled. Contact your administrator for access.' });
+  }
+
   const parse = RegisterRequestSchema.safeParse(req.body);
   if (!parse.success) {
     return res.status(400).json({ error: 'Validation failed', details: parse.error.format() });
@@ -142,10 +146,15 @@ authRouter.post('/refresh', (req, res: Response) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
+    const membership = db.findMembership(decoded.organizationId, user.id);
+    if (!membership) {
+      return res.status(403).json({ error: 'Account no longer has access to this organization' });
+    }
+
     const { accessToken, refreshToken } = generateTokens({
       userId: user.id,
       organizationId: decoded.organizationId,
-      role: decoded.role
+      role: membership.role as UserRole
     });
 
     return res.json({ accessToken, refreshToken });

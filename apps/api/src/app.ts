@@ -11,6 +11,7 @@ import { auditRouter } from './routes/audit.routes.js';
 import { shareRouter, documentShareRouter } from './routes/share.routes.js';
 import { viewerRouter } from './routes/viewer.routes.js';
 import { dvxRouter } from './routes/dvx.routes.js';
+import { pdfToolsRouter } from './routes/pdf-tools.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -37,6 +38,7 @@ export function createApp(): Express {
   v1.use('/shares', shareRouter);
   v1.use('/viewer', viewerRouter);
   v1.use('/dvx', dvxRouter);
+  v1.use('/pdf-tools', pdfToolsRouter);
   v1.use('/licenses', licenseRouter);
   v1.use('/devices', deviceRouter);
   v1.use('/audit', auditRouter);
@@ -51,7 +53,7 @@ export function createApp(): Express {
         description: 'Universal Offline Self-Destructing Document Platform API'
       },
       paths: {
-        '/auth/register': { post: { summary: 'Register user and organization' } },
+        '/auth/register': { post: { summary: 'Register user and organization (disabled unless explicitly enabled)' } },
         '/auth/login': { post: { summary: 'Login user' } },
         '/auth/refresh': { post: { summary: 'Refresh JWT access token' } },
         '/auth/me': { get: { summary: 'Get current user profile and tenant organizations' } },

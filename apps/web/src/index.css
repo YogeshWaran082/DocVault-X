@@ -3,9 +3,378 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    background: #f5f5f7;
+  }
+
+  html.dark {
+    background: #09090b;
+  }
+
   body {
     @apply selection:bg-teal-400 selection:text-slate-950;
+    transition: background-color 250ms ease, color 250ms ease;
   }
+}
+
+/* Shared Apple-like light appearance for the previously dark-only landing surfaces. */
+html:not(.dark) .landing-theme {
+  background: #f5f5f7 !important;
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .landing-theme [class*="bg-[#000000]"],
+html:not(.dark) .landing-theme [class*="bg-[#030303]"],
+html:not(.dark) .landing-theme [class*="bg-[#09090b]"],
+html:not(.dark) .landing-theme [class*="bg-[#0A0A0A]"] {
+  background-color: #f5f5f7 !important;
+}
+
+html:not(.dark) .landing-theme [class*="bg-[#111111]"],
+html:not(.dark) .landing-theme [class*="bg-[#121214]"],
+html:not(.dark) .landing-theme [class*="bg-[#141418]"],
+html:not(.dark) .landing-theme [class*="bg-[#161617]"],
+html:not(.dark) .landing-theme [class*="bg-[#1d1d1f]"] {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html:not(.dark) .landing-theme h1,
+html:not(.dark) .landing-theme h2,
+html:not(.dark) .landing-theme h3,
+html:not(.dark) .landing-theme h4,
+html:not(.dark) .landing-theme [class*="text-[#f5f5f7]"] {
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .landing-theme [class*="text-[#86868b]"],
+html:not(.dark) .landing-theme [class*="text-[#a1a1a6]"],
+html:not(.dark) .landing-theme .text-neutral-400,
+html:not(.dark) .landing-theme .text-neutral-500 {
+  color: #6e6e73 !important;
+}
+
+html:not(.dark) .landing-theme [class*="border-white/"],
+html:not(.dark) .landing-theme [class*="border-[#333336]"],
+html:not(.dark) .landing-theme [class*="border-[#424245]"] {
+  border-color: rgba(60, 60, 67, 0.16) !important;
+}
+
+html:not(.dark) .landing-theme header {
+  background: rgba(245, 245, 247, 0.82) !important;
+  box-shadow: 0 1px 0 rgba(60, 60, 67, 0.12) !important;
+}
+
+html:not(.dark) .landing-theme header .font-bold,
+html:not(.dark) .landing-theme header nav button:hover {
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .hero-section {
+  background: #f5f5f7 !important;
+}
+
+html:not(.dark) .hero-background {
+  background:
+    radial-gradient(ellipse at 50% 28%, rgba(255, 149, 70, 0.2), transparent 42%),
+    linear-gradient(180deg, #ffffff 0%, #f5f5f7 70%, #e8e8ed 100%) !important;
+}
+
+html:not(.dark) .hero-background > * {
+  opacity: 0 !important;
+}
+
+html:not(.dark) .hero-content h1,
+html:not(.dark) .hero-content p,
+html:not(.dark) .hero-content .text-neutral-300,
+html:not(.dark) .hero-content .text-neutral-400 {
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .hero-content .hero-primary-cta {
+  background: #1d1d1f !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(29, 29, 31, 0.16) !important;
+}
+
+html:not(.dark) .hero-content .hero-secondary-cta {
+  background: rgba(255, 255, 255, 0.86) !important;
+  border-color: rgba(60, 60, 67, 0.18) !important;
+  color: #1d1d1f !important;
+}
+
+/* Authentication panel follows the same global appearance preference. */
+html:not(.dark) .auth-theme-shell {
+  background: rgba(232, 232, 237, 0.78) !important;
+}
+
+html:not(.dark) .auth-theme-shell > section,
+html:not(.dark) .auth-theme-shell aside {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border-color: rgba(60, 60, 67, 0.14) !important;
+  box-shadow: 0 32px 100px rgba(50, 50, 60, 0.18) !important;
+}
+
+html:not(.dark) .auth-theme-shell .text-white,
+html:not(.dark) .auth-theme-shell .text-neutral-200,
+html:not(.dark) .auth-theme-shell .text-neutral-300 {
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .auth-theme-shell input {
+  background: rgba(118, 118, 128, 0.08) !important;
+  border-color: rgba(60, 60, 67, 0.18) !important;
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .auth-theme-shell button[type="submit"] {
+  color: white !important;
+}
+
+/* PDF and protected viewer surfaces support a low-glare Apple Preview-like light mode. */
+html:not(.dark) .pdf-viewer-shell,
+html:not(.dark) .viewer-theme-shell {
+  color-scheme: light;
+}
+
+html:not(.dark) .pdf-viewer-shell > header {
+  background: #f5f5f7 !important;
+  border-color: rgba(60, 60, 67, 0.2) !important;
+  color: #1d1d1f !important;
+}
+
+/* Semantic viewer surfaces keep WCAG-readable contrast in light mode. */
+.pdf-viewer-shell {
+  --pdf-toolbar-bg: #292a2d;
+  --pdf-control-bg: rgba(32, 33, 36, 0.9);
+  --pdf-control-text: #e2e8f0;
+  --pdf-muted-text: #94a3b8;
+  --pdf-border: rgba(255, 255, 255, 0.1);
+  --pdf-rail-bg: #252629;
+  --pdf-sidebar-bg: #202124;
+  --pdf-thumb-bg: #282c34;
+  --pdf-canvas-bg: #3b3d40;
+}
+
+html:not(.dark) .pdf-viewer-shell {
+  --pdf-toolbar-bg: #f7f7f9;
+  --pdf-control-bg: #ffffff;
+  --pdf-control-text: #242426;
+  --pdf-muted-text: #626268;
+  --pdf-border: rgba(60, 60, 67, 0.2);
+  --pdf-rail-bg: #eeeef2;
+  --pdf-sidebar-bg: #f2f2f5;
+  --pdf-thumb-bg: #ffffff;
+  --pdf-canvas-bg: #c9c9ce;
+}
+
+.pdf-viewer-toolbar {
+  background: var(--pdf-toolbar-bg) !important;
+  border-color: var(--pdf-border) !important;
+}
+
+.pdf-viewer-toolbar button,
+.pdf-viewer-toolbar input,
+.pdf-viewer-toolbar span {
+  color: var(--pdf-control-text);
+}
+
+.pdf-viewer-toolbar .text-slate-400 {
+  color: var(--pdf-muted-text) !important;
+}
+
+.pdf-toolbar-control {
+  background: var(--pdf-control-bg) !important;
+  border-color: var(--pdf-border) !important;
+  box-shadow: 0 1px 2px rgba(30, 30, 35, 0.08);
+}
+
+html:not(.dark) .pdf-toolbar-control input {
+  color: #1d1d1f !important;
+  border-color: transparent;
+}
+
+html:not(.dark) .pdf-viewer-toolbar button:hover {
+  background-color: rgba(60, 60, 67, 0.09) !important;
+  color: #111113 !important;
+}
+
+html:not(.dark) .pdf-viewer-toolbar button:disabled {
+  color: #a1a1a8 !important;
+}
+
+html:not(.dark) .pdf-viewer-toolbar .bg-brand-600,
+html:not(.dark) .pdf-tool-rail .bg-brand-600 {
+  color: #ffffff !important;
+}
+
+.pdf-tool-rail {
+  background: var(--pdf-rail-bg) !important;
+  border-color: var(--pdf-border) !important;
+}
+
+html:not(.dark) .pdf-tool-rail button:not(.bg-brand-600) {
+  color: #55555b !important;
+}
+
+html:not(.dark) .pdf-tool-rail button:not(.bg-brand-600):hover {
+  background: rgba(60, 60, 67, 0.1) !important;
+  color: #1d1d1f !important;
+}
+
+.pdf-thumbnail-sidebar {
+  background: var(--pdf-sidebar-bg) !important;
+  border-color: var(--pdf-border) !important;
+  color: var(--pdf-control-text);
+}
+
+html:not(.dark) .pdf-thumbnail-sidebar .text-slate-300,
+html:not(.dark) .pdf-thumbnail-sidebar .text-slate-400,
+html:not(.dark) .pdf-thumbnail-sidebar .text-slate-500 {
+  color: #55555b !important;
+}
+
+.pdf-thumbnail-placeholder {
+  background: var(--pdf-thumb-bg) !important;
+}
+
+html:not(.dark) .pdf-thumbnail-placeholder {
+  box-shadow: 0 5px 18px rgba(40, 40, 50, 0.12);
+}
+
+html:not(.dark) .pdf-viewer-shell > header .text-slate-200,
+html:not(.dark) .pdf-viewer-shell > header .text-slate-300,
+html:not(.dark) .pdf-viewer-shell > header .text-white {
+  color: #3a3a3c !important;
+}
+
+html:not(.dark) .pdf-viewer-shell aside {
+  background: #e8e8ed !important;
+  border-color: rgba(60, 60, 67, 0.18) !important;
+}
+
+html:not(.dark) .pdf-canvas-viewport {
+  background: var(--pdf-canvas-bg) !important;
+}
+
+html:not(.dark) .viewer-app-header {
+  background: #f7f7f9 !important;
+  color: #1d1d1f !important;
+  border-color: rgba(60, 60, 67, 0.2) !important;
+}
+
+html:not(.dark) .viewer-app-header .text-slate-100,
+html:not(.dark) .viewer-app-header .text-slate-200,
+html:not(.dark) .viewer-app-header .text-slate-300,
+html:not(.dark) .viewer-app-header .text-slate-400 {
+  color: #45454a !important;
+}
+
+html:not(.dark) .viewer-app-action {
+  background: #ffffff !important;
+  border-color: rgba(60, 60, 67, 0.2) !important;
+  color: #242426 !important;
+  box-shadow: 0 1px 2px rgba(30, 30, 35, 0.08);
+}
+
+html:not(.dark) .viewer-app-action:hover {
+  background: #e9e9ed !important;
+  border-color: rgba(13, 148, 136, 0.5) !important;
+}
+
+html:not(.dark) .viewer-app-close {
+  background: #e9e9ed !important;
+  color: #4a4a50 !important;
+}
+
+html:not(.dark) .viewer-app-close:hover {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+html:not(.dark) .pdf-native-password-backdrop {
+  background: rgba(232, 232, 237, 0.94) !important;
+}
+
+html:not(.dark) .pdf-native-password-panel {
+  background: #ffffff !important;
+  border-color: rgba(60, 60, 67, 0.18) !important;
+  box-shadow: 0 28px 80px rgba(50, 50, 60, 0.2) !important;
+}
+
+html:not(.dark) .pdf-native-password-panel h3 {
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .pdf-native-password-panel p {
+  color: #626268 !important;
+}
+
+html:not(.dark) .pdf-native-password-panel input {
+  background: #f5f5f7 !important;
+  border-color: rgba(60, 60, 67, 0.2) !important;
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .pdf-native-password-panel button[type="submit"] {
+  color: #ffffff !important;
+}
+
+html:not(.dark) .pdf-privacy-shield {
+  background: rgba(245, 245, 247, 0.96) !important;
+}
+
+html:not(.dark) .pdf-privacy-shield h3 {
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .pdf-privacy-shield p {
+  color: #626268 !important;
+}
+
+html:not(.dark) .pdf-privacy-shield button,
+html:not(.dark) .pdf-security-toast {
+  color: #ffffff !important;
+}
+
+html:not(.dark) .viewer-theme-shell {
+  background-color: rgba(232, 232, 237, 0.92) !important;
+}
+
+html:not(.dark) .viewer-theme-shell .bg-slate-950,
+html:not(.dark) .viewer-theme-shell .bg-slate-900 {
+  background-color: #ffffff !important;
+}
+
+html:not(.dark) .viewer-theme-shell .text-white,
+html:not(.dark) .viewer-theme-shell .text-slate-100,
+html:not(.dark) .viewer-theme-shell .text-slate-200,
+html:not(.dark) .viewer-theme-shell .text-slate-300 {
+  color: #1d1d1f !important;
+}
+
+html:not(.dark) .viewer-theme-shell .border-slate-800,
+html:not(.dark) .viewer-theme-shell .border-slate-700 {
+  border-color: rgba(60, 60, 67, 0.16) !important;
+}
+
+html:not(.dark) .viewer-theme-shell header,
+html:not(.dark) .viewer-theme-shell [class*="bg-[#262B34]"],
+html:not(.dark) .viewer-theme-shell [class*="bg-[#0A1222]"] {
+  background-color: #f5f5f7 !important;
+}
+
+html:not(.dark) .error-popup-theme {
+  background: rgba(232, 232, 237, 0.82) !important;
+}
+
+html:not(.dark) .error-popup-theme section {
+  background: #ffffff !important;
+  border-color: rgba(255, 59, 48, 0.2) !important;
+  box-shadow: 0 24px 80px rgba(50, 50, 60, 0.18) !important;
+}
+
+html:not(.dark) .error-popup-theme h2 {
+  color: #1d1d1f !important;
 }
 
 /* Glassmorphism & Custom Accents */
@@ -46,12 +415,57 @@
   }
 }
 
+@keyframes heroGridBreathe {
+  0%, 100% {
+    opacity: 0.56;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(1.012);
+  }
+}
+
+@keyframes heroCoreFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes heroHorizonFloat {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-5px) scale(1.006);
+  }
+}
+
+.hero-grid-breathe {
+  animation: heroGridBreathe 12s ease-in-out infinite;
+  transform-origin: 50% 14%;
+}
+
+.hero-core-float {
+  animation: heroCoreFloat 6s ease-in-out infinite;
+}
+
+.hero-horizon-float {
+  animation: heroHorizonFloat 11s ease-in-out infinite;
+}
+
 .animate-wave-drift {
   animation: waveDrift 10s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-wave-drift {
+  .animate-wave-drift,
+  .hero-grid-breathe,
+  .hero-core-float,
+  .hero-horizon-float {
     animation: none;
   }
 }

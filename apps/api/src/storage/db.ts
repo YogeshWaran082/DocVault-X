@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { getDataDirectory } from './data-directory.js';
 
 export interface DbUser {
   id: string;
@@ -74,6 +76,7 @@ export interface DbPolicy {
   allowExport: boolean;
   allowPrint: boolean;
   watermarkTemplate: string | null;
+  passwordHash?: string | null;
   createdAt: string;
   supersededAt: string | null;
 }
@@ -120,6 +123,7 @@ export interface DbShareLink {
   watermarkTemplate: string | null;
   allowDownload: boolean;
   singleSessionOnly: boolean;
+  passwordHash?: string | null;
   boundIpHash?: string | null;
   alertOnSuspiciousAccess: boolean;
   revokedAt: string | null;
@@ -226,16 +230,6 @@ export interface DatabaseState {
   keyVersions: DbKeyVersion[];
 }
 
-function getDataDirectory(): string {
-  if (process.env['DATA_DIR']) {
-    return process.env['DATA_DIR'];
-  }
-  if (process.env['VERCEL']) {
-    return '/tmp/docvault_data';
-  }
-  return path.join(process.cwd(), 'data');
-}
-
 export class Database {
   private state: DatabaseState;
   private dbFilePath: string;
@@ -243,13 +237,57 @@ export class Database {
   constructor(filePath?: string) {
     this.dbFilePath = filePath || path.join(getDataDirectory(), 'docvault_db.json');
     this.state = this.load();
+    this.ensureSystemAdministrator();
+  }
+
+  private ensureSystemAdministrator() {
+    if (process.env['NODE_ENV'] === 'test') return;
+
+    const email = (process.env['ADMIN_EMAIL'] || 'admin@docvaultx.com').trim().toLowerCase();
+    const password = process.env['ADMIN_PASSWORD'] || 'DocVaultAdmin@2026';
+    const legacyAdmin = this.state.users.find(user => user.email === 'admin@docvault-demo.com');
+    const configuredAdmin = this.state.users.find(user => user.email.toLowerCase() === email);
+    const admin = configuredAdmin || legacyAdmin || this.state.users.find(user => user.id === 'demo-user-admin');
+
+    if (!admin) return;
+
+    const passwordMatches = admin.passwordHash
+      ? bcrypt.compareSync(password, admin.passwordHash)
+      : false;
+
+    if (admin.email !== email || admin.name !== 'System Administrator' || !passwordMatches) {
+      admin.email = email;
+      admin.name = 'System Administrator';
+      admin.passwordHash = bcrypt.hashSync(password, 12);
+      admin.mfaEnabled = false;
+      this.persist();
+    }
   }
 
   private load(): DatabaseState {
     try {
       if (fs.existsSync(this.dbFilePath)) {
         const raw = fs.readFileSync(this.dbFilePath, 'utf8');
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw) as Partial<DatabaseState>;
+        return {
+          organizations: parsed.organizations || [],
+          users: parsed.users || [],
+          memberships: parsed.memberships || [],
+          devices: parsed.devices || [],
+          documents: parsed.documents || [],
+          documentVersions: parsed.documentVersions || [],
+          policies: parsed.policies || [],
+          grants: parsed.grants || [],
+          licenses: parsed.licenses || [],
+          shareLinks: parsed.shareLinks || [],
+          accessSessions: parsed.accessSessions || [],
+          accessEvents: parsed.accessEvents || [],
+          securityAlerts: parsed.securityAlerts || [],
+          conversionJobs: parsed.conversionJobs || [],
+          deletionJobs: parsed.deletionJobs || [],
+          auditEvents: parsed.auditEvents || [],
+          keyVersions: parsed.keyVersions || []
+        };
       }
     } catch {
       // fallback to blank
@@ -267,9 +305,9 @@ export class Database {
       users: [
         {
           id: 'demo-user-admin',
-          email: 'admin@docvault-demo.com',
-          name: 'Security Executive',
-          passwordHash: '$2a$10$CyrJZyYTdA8QXQIJNmmyweiCO0ArXwvTpifauANh10W0gWjBSAHvy',
+          email: 'admin@docvaultx.com',
+          name: 'System Administrator',
+          passwordHash: '$2a$12$ucsSLnhG2SJOjGdkOdurhOKatkBCzASnTC9/GveteQi53Yk4/lkhG',
           mfaEnabled: false,
           createdAt: now
         }
@@ -515,6 +553,12 @@ export class Database {
 
   public listGrantsByDocument(documentId: string): DbGrant[] {
     return this.state.grants.filter(g => g.documentId === documentId);
+  }
+
+  public hasActiveGrant(documentId: string, userId: string): boolean {
+    return this.state.grants.some(
+      grant => grant.documentId === documentId && grant.recipientUserId === userId && grant.status === 'active'
+    );
   }
 
   public revokeGrant(grantId: string): boolean {

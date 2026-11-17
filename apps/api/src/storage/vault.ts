@@ -2,16 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { DvxCryptoEngine, EncryptedContainer } from '@docvault/crypto-core';
-
-function getDataDirectory(): string {
-  if (process.env['DATA_DIR']) {
-    return process.env['DATA_DIR'];
-  }
-  if (process.env['VERCEL']) {
-    return '/tmp/docvault_data';
-  }
-  return path.join(process.cwd(), 'data');
-}
+import { getDataDirectory } from './data-directory.js';
 
 export class EncryptedVaultStorage {
   private baseDir: string;

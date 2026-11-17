@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Upload, Shield, AlertTriangle, FileText, CheckCircle2, Lock, Clock } from 'lucide-react';
+import { X, Upload, Shield, AlertTriangle, FileText, CheckCircle2, Lock, Clock, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { ApiClient } from '../api/client';
 
 interface UploadModalProps {
@@ -11,6 +11,8 @@ interface UploadModalProps {
 export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
+  const [documentPassword, setDocumentPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<'SECURE_NATIVE' | 'NORMAL_EXPORT' | 'OFFLINE_PWA'>('SECURE_NATIVE');
   // Timing restriction: defaults to 50 minutes (customizable to hours)
   const [timingValue, setTimingValue] = useState<number>(50);
@@ -20,6 +22,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuc
   const [watermark, setWatermark] = useState('CONFIDENTIAL • {user} • {date}');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isPdf = Boolean(file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')));
 
   if (!isOpen) return null;
 
@@ -39,6 +42,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuc
       setError('Please select a file to upload');
       return;
     }
+    if (isPdf && documentPassword && documentPassword.length < 6) {
+      setError('PDF password must contain at least 6 characters');
+      return;
+    }
 
     setUploading(true);
     setError(null);
@@ -47,6 +54,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuc
       const formData = new FormData();
       formData.append('file', file);
       formData.append('title', title || file.name);
+      if (isPdf && documentPassword) formData.append('password', documentPassword);
 
       const result = await ApiClient.uploadDocument(formData);
 
@@ -149,6 +157,37 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuc
               required
             />
           </div>
+
+          {isPdf && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+              <div className="mb-3 flex items-start gap-3">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-950">
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <div>
+                  <label htmlFor="pdf-access-password" className="block text-xs font-semibold text-slate-900 dark:text-white">PDF access password <span className="font-normal text-slate-400">(optional)</span></label>
+                  <p className="mt-0.5 text-[11px] leading-5 text-slate-500">Viewers must enter this password before DocVault decrypts the PDF.</p>
+                </div>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="pdf-access-password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={documentPassword}
+                  onChange={(event) => setDocumentPassword(event.target.value)}
+                  minLength={6}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  placeholder="Create a password"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+                <button type="button" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide PDF password' : 'Show PDF password'} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white">
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Protection Mode */}
           <div>

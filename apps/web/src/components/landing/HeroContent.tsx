@@ -1,17 +1,17 @@
 import React from 'react';
-import { Download, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, CheckCircle2 } from 'lucide-react';
 
 interface HeroContentProps {
   onExploreFeatures: () => void;
-  onDownloadClick: () => void;
+  onTryApp: () => void;
 }
 
 export const HeroContent: React.FC<HeroContentProps> = ({
   onExploreFeatures,
-  onDownloadClick,
+  onTryApp,
 }) => {
   return (
-    <div className="text-center max-w-4xl mx-auto space-y-6 pt-4">
+    <div className="hero-content text-center max-w-4xl mx-auto space-y-6 pt-4">
       {/* 1. Eyebrow Badge: Orange SECURE VIEWING + Universal Document Platform */}
       <div className="inline-flex items-center gap-2 p-1 pl-1 pr-3 rounded-full bg-[#121214]/90 border border-neutral-800/80 backdrop-blur-md shadow-lg shadow-black/40 animate-in fade-in slide-in-from-bottom-2 duration-700">
         <span className="px-3 py-1 rounded-full bg-gradient-to-r from-[#FF7A00] to-[#FF4500] text-white font-bold text-[10px] tracking-wider uppercase shadow-sm">
@@ -40,20 +40,17 @@ export const HeroContent: React.FC<HeroContentProps> = ({
 
       {/* 4. Action CTA Buttons */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2">
-        {/* Solid White Pill CTA */}
         <button
-          onClick={onDownloadClick}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3 rounded-full text-sm font-semibold text-black bg-white hover:bg-neutral-100 shadow-[0_4px_24px_rgba(255,255,255,0.18)] transition-all duration-200 active:scale-95 focus:outline-none"
+          onClick={onTryApp}
+          className="hero-primary-cta w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3 rounded-full text-sm font-semibold text-black bg-white hover:bg-neutral-100 shadow-[0_4px_24px_rgba(255,255,255,0.18)] transition-all duration-200 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A00]"
         >
-          <Download className="w-4 h-4 text-black stroke-[2.5]" />
-          <span>Download App</span>
-          <ArrowRight className="w-3.5 h-3.5 text-black stroke-[2.5]" />
+          <span>Try the App</span>
+          <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
         </button>
 
-        {/* Dark Outlined Pill CTA */}
         <button
           onClick={onExploreFeatures}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-full text-sm font-medium text-white bg-[#121215]/90 hover:bg-[#1a1a1f] border border-neutral-700/80 hover:border-neutral-500 shadow-md transition-all duration-200 active:scale-95 focus:outline-none"
+          className="hero-secondary-cta w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-full text-sm font-medium text-white bg-[#121215]/90 hover:bg-[#1a1a1f] border border-neutral-700/80 hover:border-neutral-500 shadow-md transition-all duration-200 active:scale-95 focus:outline-none"
         >
           <span>Explore Features</span>
           <ArrowRight className="w-3.5 h-3.5 text-neutral-300" />

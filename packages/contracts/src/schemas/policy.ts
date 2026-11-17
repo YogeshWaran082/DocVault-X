@@ -14,7 +14,8 @@ export const CreatePolicyRequestSchema = z.object({
   offlineLeaseSeconds: z.number().int().min(60).max(60 * 60 * 24 * 30).default(86400), // Default 24 hrs
   allowExport: z.boolean().default(false),
   allowPrint: z.boolean().default(false),
-  watermarkTemplate: z.string().max(255).nullable().optional()
+  watermarkTemplate: z.string().max(255).nullable().optional(),
+  password: z.string().min(6).max(128).nullable().optional()
 });
 export type CreatePolicyRequest = z.infer<typeof CreatePolicyRequestSchema>;
 
@@ -30,6 +31,7 @@ export const PolicyResponseSchema = z.object({
   allowExport: z.boolean(),
   allowPrint: z.boolean(),
   watermarkTemplate: z.string().nullable(),
+  hasPassword: z.boolean().optional(),
   createdAt: z.string().datetime(),
   supersededAt: z.string().datetime().nullable()
 });

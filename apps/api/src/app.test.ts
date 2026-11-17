@@ -3,6 +3,7 @@ import * as assert from 'node:assert';
 import { createApp } from './app.js';
 import { db } from './storage/db.js';
 import { Server } from 'node:http';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 describe('DocVault X API Integration Tests', () => {
   let server: Server;
@@ -83,6 +84,7 @@ describe('DocVault X API Integration Tests', () => {
   });
 
   let uploadedDocId: string;
+  let uploadedPdfId: string;
 
   it('uploads a document, encrypts to .dvx container with real AES-256-GCM', async () => {
     const boundary = '----DocVaultBoundary' + Math.random().toString(16);
@@ -111,6 +113,61 @@ describe('DocVault X API Integration Tests', () => {
     assert.strictEqual(data.policy.mode, 'SECURE_NATIVE');
 
     uploadedDocId = data.document.id;
+  });
+
+  it('runs PDF protect, sign, redact, and compare workflows', async () => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([612, 792]);
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    page.drawText('DocVault PDF tools integration test', { x: 72, y: 720, size: 18, font });
+    const pdfBytes = await pdf.save();
+    const form = new FormData();
+    form.append('title', 'PDF Tools Source.pdf');
+    form.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), 'pdf-tools-source.pdf');
+    form.append('password', 'secure123');
+    const upload = await fetch(`${baseUrl}/api/v1/documents/upload-direct`, {
+      method: 'POST', headers: { Authorization: `Bearer ${tokenOrgA}` }, body: form
+    });
+    assert.strictEqual(upload.status, 201);
+    uploadedPdfId = ((await upload.json()) as any).document.id;
+
+    const withoutPassword = await fetch(`${baseUrl}/api/v1/pdf-tools/sign`, {
+      method: 'POST', headers: { Authorization: `Bearer ${tokenOrgA}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentId: uploadedPdfId, signerName: 'Alice Walker', pageNumber: 1 })
+    });
+    assert.strictEqual(withoutPassword.status, 423);
+
+    const sign = await fetch(`${baseUrl}/api/v1/pdf-tools/sign`, {
+      method: 'POST', headers: { Authorization: `Bearer ${tokenOrgA}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentId: uploadedPdfId, password: 'secure123', signerName: 'Alice Walker', reason: 'Approved', pageNumber: 1 })
+    });
+    assert.strictEqual(sign.status, 201);
+    const signed = (await sign.json()) as any;
+    assert.match(signed.document.title, /Signed\.pdf$/);
+    assert.strictEqual(signed.document.hasPassword, true);
+
+    const redact = await fetch(`${baseUrl}/api/v1/pdf-tools/redact`, {
+      method: 'POST', headers: { Authorization: `Bearer ${tokenOrgA}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentId: uploadedPdfId, password: 'secure123', pageNumber: 1, rectangles: [{ x: 72, y: 680, width: 180, height: 24 }], label: 'REDACTED' })
+    });
+    assert.strictEqual(redact.status, 201);
+    const redacted = (await redact.json()) as any;
+    assert.match(redacted.document.title, /Redacted\.pdf$/);
+
+    const compare = await fetch(`${baseUrl}/api/v1/pdf-tools/compare`, {
+      method: 'POST', headers: { Authorization: `Bearer ${tokenOrgA}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leftDocumentId: uploadedPdfId, rightDocumentId: signed.document.id, leftPassword: 'secure123', rightPassword: 'secure123' })
+    });
+    assert.strictEqual(compare.status, 200);
+    const comparison = (await compare.json()) as any;
+    assert.strictEqual(comparison.comparison.identical, false);
+    assert.strictEqual(comparison.comparison.left.pages, 1);
+
+    const unlock = await fetch(`${baseUrl}/api/v1/documents/${uploadedPdfId}/policies`, {
+      method: 'POST', headers: { Authorization: `Bearer ${tokenOrgA}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: null })
+    });
+    assert.strictEqual(unlock.status, 201);
   });
 
   it('downloads the protected .dvx container and verifies DVX1 header', async () => {

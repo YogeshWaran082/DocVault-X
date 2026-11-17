@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Clock, AlertTriangle, ShieldAlert, Lock, KeyRound } from 'lucide-react';
 import { ApiClient } from '../api/client';
 import { PdfViewer } from './PdfViewer';
+import { UnableToOpenPopup } from './UnableToOpenPopup';
 
 interface ReceiverViewerProps {
   token: string;
@@ -22,64 +23,83 @@ export const ReceiverViewer: React.FC<ReceiverViewerProps> = ({ token }) => {
   const [errorState, setErrorState] = useState<'EXPIRED' | 'REVOKED' | 'CONFLICT' | 'ERROR' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Password Protection States
+  const [requiresPassword, setRequiresPassword] = useState(false);
+  const [enteredPassword, setEnteredPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+
   const blobUrlRef = useRef<string | null>(null);
+
+  const loadSessionWithPassword = async (pwd?: string) => {
+    try {
+      if (pwd) setUnlocking(true);
+      else setLoading(true);
+      setPasswordError(null);
+
+      const data = await ApiClient.initReceiverSession(token, pwd);
+      setSession(data);
+      setRemainingSeconds(data.remainingSeconds);
+      setRequiresPassword(false);
+
+      // Fetch protected preview content blob
+      try {
+        const blob = await ApiClient.fetchReceiverContent(data.sessionId);
+        const url = URL.createObjectURL(blob);
+        blobUrlRef.current = url;
+        setContentUrl(url);
+      } catch (err: any) {
+        if (err.message && err.message.includes('410')) {
+          setErrorState('EXPIRED');
+        } else if (err.message && err.message.includes('403')) {
+          setErrorState('REVOKED');
+        } else if (err.message && err.message.includes('409')) {
+          setErrorState('CONFLICT');
+        } else {
+          setErrorMessage(err.message || 'Failed to load document content');
+          setErrorState('ERROR');
+        }
+      }
+    } catch (err: any) {
+      if (err.code === 'PASSWORD_REQUIRED' || err.requiresPassword || (err.status === 401 && !pwd)) {
+        setRequiresPassword(true);
+        setErrorState(null);
+      } else if (err.code === 'INVALID_PASSWORD' || (err.status === 403 && pwd)) {
+        setRequiresPassword(true);
+        setPasswordError('Incorrect access password. Please try again.');
+      } else if (err.message && (err.message.includes('expired') || err.message.includes('410'))) {
+        setErrorState('EXPIRED');
+      } else if (err.message && (err.message.includes('revoked') || err.message.includes('403'))) {
+        setErrorState('REVOKED');
+      } else if (err.message && (err.message.includes('Single-session') || err.message.includes('409'))) {
+        setErrorState('CONFLICT');
+      } else {
+        setErrorMessage(err.message || 'Unable to open document');
+        setErrorState('ERROR');
+      }
+    } finally {
+      setLoading(false);
+      setUnlocking(false);
+    }
+  };
 
   // 1. Initialize receiver session
   useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
-
-    ApiClient.initReceiverSession(token)
-      .then(async (data) => {
-        if (!isMounted) return;
-        setSession(data);
-        setRemainingSeconds(data.remainingSeconds);
-
-        // Fetch protected preview content blob
-        try {
-          const blob = await ApiClient.fetchReceiverContent(data.sessionId);
-          if (!isMounted) return;
-          const url = URL.createObjectURL(blob);
-          blobUrlRef.current = url;
-          setContentUrl(url);
-        } catch (err: any) {
-          if (!isMounted) return;
-          if (err.message && err.message.includes('410')) {
-            setErrorState('EXPIRED');
-          } else if (err.message && err.message.includes('403')) {
-            setErrorState('REVOKED');
-          } else if (err.message && err.message.includes('409')) {
-            setErrorState('CONFLICT');
-          } else {
-            setErrorMessage(err.message || 'Failed to load document content');
-            setErrorState('ERROR');
-          }
-        }
-      })
-      .catch((err) => {
-        if (!isMounted) return;
-        if (err.message && (err.message.includes('expired') || err.message.includes('410'))) {
-          setErrorState('EXPIRED');
-        } else if (err.message && (err.message.includes('revoked') || err.message.includes('403'))) {
-          setErrorState('REVOKED');
-        } else if (err.message && (err.message.includes('Single-session') || err.message.includes('409'))) {
-          setErrorState('CONFLICT');
-        } else {
-          setErrorMessage(err.message || 'Unable to open document');
-          setErrorState('ERROR');
-        }
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
+    loadSessionWithPassword();
 
     return () => {
-      isMounted = false;
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
       }
     };
   }, [token]);
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enteredPassword.trim()) return;
+    loadSessionWithPassword(enteredPassword.trim());
+  };
 
   // 2. Local countdown timer
   useEffect(() => {
@@ -164,6 +184,87 @@ export const ReceiverViewer: React.FC<ReceiverViewerProps> = ({ token }) => {
           <p className="text-sm font-semibold tracking-wide">Authorizing secure browser viewer session...</p>
           <p className="text-xs text-slate-400">Verifying server-side cryptographic lease</p>
         </div>
+      </div>
+    );
+  }
+
+  // State: Password Required (Protected with Access Password)
+  if (requiresPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#030303] p-4 text-white">
+        <div className="max-w-md w-full bg-[#121214] rounded-3xl border border-neutral-800 p-8 text-center space-y-6 shadow-2xl animate-fade-in relative overflow-hidden">
+          {/* Ambient Glow */}
+          <div className="absolute -top-12 -right-12 w-48 h-48 bg-[#FF6A00]/15 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#FF7A00]/20 to-[#FF4500]/10 text-[#FF7A00] border border-[#FF6A00]/30 flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(255,106,0,0.25)]">
+            <Lock className="w-8 h-8 stroke-[2.2]" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-white tracking-tight">Password Protected Document</h2>
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              This document is secured with an access password. Please enter the password to decrypt and view the document.
+            </p>
+          </div>
+
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            {passwordError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs text-center font-medium animate-in fade-in">
+                {passwordError}
+              </div>
+            )}
+
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                autoFocus
+                required
+                value={enteredPassword}
+                onChange={(e) => {
+                  setEnteredPassword(e.target.value);
+                  setPasswordError(null);
+                }}
+                placeholder="Enter access password"
+                className="w-full px-4 py-3 pr-12 rounded-xl bg-[#09090b] border border-neutral-700 text-white text-sm focus:outline-none focus:border-[#FF6A00] transition placeholder:text-neutral-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs font-medium"
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              disabled={unlocking || !enteredPassword.trim()}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#FF7A00] to-[#FF4500] hover:from-[#FF8A22] hover:to-[#FF5500] text-white font-semibold text-xs shadow-lg shadow-[#FF6A00]/25 transition active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>{unlocking ? 'Verifying & Decrypting...' : 'Unlock Document'}</span>
+            </button>
+          </form>
+
+          <div className="pt-2 text-[11px] text-neutral-500 font-mono">
+            Encrypted with DocVault X Universal Cryptographic Engine
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (errorState) {
+    return (
+      <div className="min-h-screen bg-slate-950">
+        <UnableToOpenPopup
+          isOpen
+          actionLabel="Close viewer"
+          onDismiss={() => {
+            window.location.hash = '';
+            window.location.reload();
+          }}
+        />
       </div>
     );
   }
@@ -260,12 +361,17 @@ export const ReceiverViewer: React.FC<ReceiverViewerProps> = ({ token }) => {
                 url={contentUrl}
                 title={session?.documentTitle}
                 watermarkText={session?.watermarkTemplate}
+                onErrorDismiss={() => {
+                  window.location.hash = '';
+                  window.location.reload();
+                }}
               />
             ) : isImage ? (
               <div className="flex-1 flex items-center justify-center p-4 min-h-0 overflow-auto bg-[#525659]">
                 <img
                   src={contentUrl}
                   alt={session?.documentTitle}
+                  onError={() => setErrorState('ERROR')}
                   className="max-h-full max-w-full object-contain rounded shadow-2xl"
                   onContextMenu={(e) => e.preventDefault()}
                   onDragStart={(e) => e.preventDefault()}

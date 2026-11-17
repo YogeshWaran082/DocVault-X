@@ -1,14 +1,15 @@
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '/api/v1';
+localStorage.removeItem('docvault_token');
 
 export class ApiClient {
-  private static token: string | null = localStorage.getItem('docvault_token');
+  private static token: string | null = sessionStorage.getItem('docvault_token');
 
   static setToken(token: string | null) {
     this.token = token;
     if (token) {
-      localStorage.setItem('docvault_token', token);
+      sessionStorage.setItem('docvault_token', token);
     } else {
-      localStorage.removeItem('docvault_token');
+      sessionStorage.removeItem('docvault_token');
     }
   }
 
@@ -24,12 +25,23 @@ export class ApiClient {
     return headers;
   }
 
+  private static expireSessionOnUnauthorized(response: Response) {
+    if (response.status === 401 && this.token) {
+      this.setToken(null);
+      window.dispatchEvent(new Event('docvault:unauthorized'));
+    }
+  }
+
   static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
     const headers = this.getHeaders(options.headers as Record<string, string>);
 
     const res = await fetch(url, { ...options, headers });
     if (!res.ok) {
+      if (res.status === 401 && endpoint !== '/auth/login') {
+        this.setToken(null);
+        window.dispatchEvent(new Event('docvault:unauthorized'));
+      }
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || `HTTP error ${res.status}`);
     }
@@ -68,6 +80,7 @@ export class ApiClient {
       headers,
       body: formData
     });
+    this.expireSessionOnUnauthorized(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || `Upload failed with HTTP ${res.status}`);
@@ -75,11 +88,35 @@ export class ApiClient {
     return res.json();
   }
 
-  static async updatePolicy(documentId: string, policy: Partial<import('../types').Policy>) {
+  static async updatePolicy(documentId: string, policy: Partial<import('../types').Policy> & { password?: string | null }) {
     return this.request<{ policy: import('../types').Policy }>(`/documents/${documentId}/policies`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(policy)
+    });
+  }
+
+  static async signPdf(input: { documentId: string; password?: string; signerName: string; reason?: string; pageNumber: number }) {
+    return this.request<{ document: import('../types').Document }>('/pdf-tools/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input)
+    });
+  }
+
+  static async redactPdf(input: { documentId: string; password?: string; pageNumber: number; rectangles: Array<{ x: number; y: number; width: number; height: number }>; label?: string }) {
+    return this.request<{ document: import('../types').Document; notice: string }>('/pdf-tools/redact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input)
+    });
+  }
+
+  static async comparePdfs(input: { leftDocumentId: string; rightDocumentId: string; leftPassword?: string; rightPassword?: string }) {
+    return this.request<{ comparison: import('../types').PdfComparison }>('/pdf-tools/compare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input)
     });
   }
 
@@ -99,15 +136,21 @@ export class ApiClient {
     return this.request<{ auditEvents: import('../types').AuditEvent[] }>('/audit');
   }
 
-  static async fetchViewContent(documentId: string): Promise<Blob> {
+  static async fetchViewContent(documentId: string, password?: string): Promise<Blob> {
     const url = `${API_BASE}/documents/${documentId}/view-content`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: this.getHeaders()
+      headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ password })
     });
+    this.expireSessionOnUnauthorized(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || 'Failed to fetch document content');
+      const requestError: any = new Error(err.message || err.error || 'Failed to fetch document content');
+      requestError.status = res.status;
+      requestError.code = err.error;
+      requestError.requiresPassword = err.requiresPassword;
+      throw requestError;
     }
     return res.blob();
   }
@@ -118,6 +161,7 @@ export class ApiClient {
       method: 'POST',
       headers: this.getHeaders()
     });
+    this.expireSessionOnUnauthorized(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || 'Protected download failed');
@@ -138,6 +182,7 @@ export class ApiClient {
       maxOpens?: number | null;
       watermarkTemplate?: string | null;
       singleSessionOnly?: boolean;
+      password?: string | null;
     }
   ) {
     return this.request<{
@@ -148,6 +193,7 @@ export class ApiClient {
       durationSeconds: number;
       maxOpens: number | null;
       singleSessionOnly: boolean;
+      hasPassword?: boolean;
     }>(`/documents/${documentId}/shares`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -194,15 +240,20 @@ export class ApiClient {
     }>('/audit/metrics');
   }
 
-  static async initReceiverSession(token: string) {
+  static async initReceiverSession(token: string, password?: string) {
     const url = `${API_BASE}/shares/${token}/session`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `Failed to open document (${res.status})`);
+      const customErr: any = new Error(err.message || err.error || `Failed to open document (${res.status})`);
+      customErr.status = res.status;
+      customErr.code = err.error;
+      customErr.requiresPassword = err.requiresPassword;
+      throw customErr;
     }
     return res.json() as Promise<{
       sessionId: string;
@@ -280,6 +331,7 @@ export class ApiClient {
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ documentId, token })
     });
+    this.expireSessionOnUnauthorized(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || `Authorization failed (${res.status})`);
@@ -327,13 +379,14 @@ export class ApiClient {
     return this.request<{ alerts: any[] }>(`/audit/alerts?limit=${limit}`);
   }
 
-  static async exportUnprotected(documentId: string, filename: string) {
+  static async exportUnprotected(documentId: string, filename: string, password?: string) {
     const url = `${API_BASE}/documents/${documentId}/unprotected-export`;
     const res = await fetch(url, {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ acknowledgeUnprotectedExport: true })
+      body: JSON.stringify({ acknowledgeUnprotectedExport: true, password })
     });
+    this.expireSessionOnUnauthorized(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || 'Export failed');

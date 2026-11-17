@@ -1,40 +1,14 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import {
   ShieldCheck,
   ArrowUp
 } from 'lucide-react';
 
 interface LandingFooterProps {
-  onTriggerAdmin: () => void;
+  onTryApp: () => void;
 }
 
-export const LandingFooter: React.FC<LandingFooterProps> = ({
-  onTriggerAdmin,
-}) => {
-  const clickCountRef = useRef<number>(0);
-  const timerRef = useRef<any>(null);
-
-  // Secret Admin Access: 3 continuous clicks on Facebook logo opens Admin login directly
-  const handleFacebookClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-
-    clickCountRef.current += 1;
-
-    if (clickCountRef.current >= 3) {
-      clickCountRef.current = 0;
-      // Direct silent transition to Admin Auth
-      onTriggerAdmin();
-    } else {
-      // Reset after 1.5s if not completed
-      timerRef.current = setTimeout(() => {
-        clickCountRef.current = 0;
-      }, 1500);
-    }
-  };
+export const LandingFooter: React.FC<LandingFooterProps> = ({ onTryApp }) => {
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -64,12 +38,12 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
               <div>Digital Signatures: Ed25519 Verified Policies</div>
             </div>
 
-            {/* Social Icons with innocent Facebook logo as secret admin gate */}
+            {/* Social links */}
             <div className="pt-2 flex items-center gap-2.5">
-              {/* Facebook Logo (Secret: 3 clicks triggers admin) - No title, no aria-label tooltip, no focus ring */}
               <button
                 type="button"
-                onClick={handleFacebookClick}
+                onClick={(e) => e.preventDefault()}
+                aria-label="Facebook"
                 className="w-8 h-8 rounded-full bg-[#161617] border border-[#333336] text-[#86868b] hover:text-[#f5f5f7] hover:border-[#424245] flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 active:outline-none select-none ring-0 shadow-none"
                 style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
               >
@@ -125,9 +99,13 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
             <h4 className="text-[#f5f5f7] font-semibold text-xs tracking-wider uppercase">Product</h4>
             <ul className="space-y-2">
               <li>
-                <a href="#downloads" className="hover:text-white transition hover:underline">
-                  Download Desktop & Mobile App
-                </a>
+                <button
+                  type="button"
+                  onClick={onTryApp}
+                  className="hover:text-white transition hover:underline"
+                >
+                  Try the App
+                </button>
               </li>
               <li>
                 <a href="#formats" className="hover:text-white transition hover:underline">
@@ -137,11 +115,6 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
               <li>
                 <a href="#formats" className="hover:text-white transition hover:underline">
                   Supported Formats
-                </a>
-              </li>
-              <li>
-                <a href="#downloads" className="hover:text-white transition hover:underline">
-                  Native OS Shielding
                 </a>
               </li>
               <li>

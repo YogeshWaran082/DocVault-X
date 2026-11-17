@@ -13,13 +13,19 @@ import {
   Minimize2,
   Hand,
   ShieldCheck,
-  AlertTriangle,
   Loader2,
   FileText,
   X,
   Lock,
-  EyeOff
+  EyeOff,
+  MousePointer2,
+  Wrench,
+  PanelLeft,
+  Shield
 } from 'lucide-react';
+import { UnableToOpenPopup } from './UnableToOpenPopup';
+import { Contrast } from 'lucide-react';
+import { useTheme } from '../theme/ThemeContext';
 
 // Initialize PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -30,6 +36,8 @@ export interface PdfViewerProps {
   title?: string;
   onLoadSuccess?: (numPages: number) => void;
   onError?: (err: Error) => void;
+  onErrorDismiss?: () => void;
+  onOpenTools?: () => void;
 }
 
 type FitMode = 'custom' | 'width' | 'page';
@@ -39,8 +47,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   watermarkText,
   title = 'Document',
   onLoadSuccess,
-  onError
+  onError,
+  onErrorDismiss,
+  onOpenTools
 }) => {
+  const { isDark, toggleTheme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -53,11 +64,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [pageInput, setPageInput] = useState<string>('1');
   const [scale, setScale] = useState<number>(1.0);
   const [rotation, setRotation] = useState<number>(0); // 0, 90, 180, 270
-  const [fitMode, setFitMode] = useState<FitMode>('width');
+  const [fitMode, setFitMode] = useState<FitMode>('page');
   const [loading, setLoading] = useState<boolean>(true);
   const [_renderingPages, setRenderingPages] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [nativePassword, setNativePassword] = useState('');
+  const [nativePasswordError, setNativePasswordError] = useState<string | null>(null);
+  const [passwordCallback, setPasswordCallback] = useState<((password: string) => void) | null>(null);
 
   // Sidebar & Pan State
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
@@ -158,12 +172,27 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     let isCancelled = false;
     setLoading(true);
     setError(null);
+    setNativePassword('');
+    setNativePasswordError(null);
+    setPasswordCallback(null);
 
     const loadingTask = pdfjsLib.getDocument({
       url,
       cMapUrl: 'https://unpkg.com/pdfjs-dist@4.10.38/cmaps/',
       cMapPacked: true
     });
+
+    loadingTask.onPassword = (updatePassword: (password: string) => void, reason: number) => {
+      if (isCancelled) return;
+      setLoading(false);
+      setNativePassword('');
+      setNativePasswordError(
+        reason === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD
+          ? 'Incorrect PDF password. Try again.'
+          : null
+      );
+      setPasswordCallback(() => updatePassword);
+    };
 
     loadingTask.promise
       .then(async (doc) => {
@@ -172,6 +201,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         setNumPages(doc.numPages);
         setCurrentPage(1);
         setPageInput('1');
+        setPasswordCallback(null);
+        setNativePasswordError(null);
         if (onLoadSuccess) onLoadSuccess(doc.numPages);
 
         // Get first page dimensions
@@ -470,6 +501,16 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   };
 
+  const handleNativePasswordSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!passwordCallback || !nativePassword) return;
+    setLoading(true);
+    setNativePasswordError(null);
+    const callback = passwordCallback;
+    setPasswordCallback(null);
+    callback(nativePassword);
+  };
+
   useEffect(() => {
     const onFsChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
@@ -505,14 +546,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   return (
     <div
       ref={containerRef}
-      className="flex-1 flex flex-col min-h-0 w-full h-full relative overflow-hidden bg-[#282c34] select-none text-slate-100"
+      className="pdf-viewer-shell flex-1 flex flex-col min-h-0 w-full h-full relative overflow-hidden bg-[#1f2023] select-none text-slate-100"
       onContextMenu={(e) => e.preventDefault()}
       onDragStart={(e) => e.preventDefault()}
     >
-      {/* =========================================================================
-          1. Sleek Top Bar (Matching Reference Image 1)
-         ========================================================================= */}
-      <header className="shrink-0 h-12 bg-[#323639] border-b border-black/40 px-3 flex items-center justify-between text-xs gap-2 z-30 select-none shadow-md">
+      <UnableToOpenPopup
+        isOpen={Boolean(error)}
+        onDismiss={() => {
+          setError(null);
+          onErrorDismiss?.();
+        }}
+      />
+      <header className="pdf-viewer-toolbar shrink-0 h-14 bg-[#292a2d] border-b border-white/10 px-3 flex items-center justify-between text-xs gap-2 z-30 select-none shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
         {/* Left: Sidebar Toggle (☰) & Document Title */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
@@ -534,12 +579,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               {title}
             </span>
           </div>
+          {onOpenTools && (
+            <div className="hidden items-center gap-1 border-l border-white/10 pl-3 sm:flex">
+              <button onClick={onOpenTools} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-slate-300 transition hover:bg-white/10 hover:text-white"><Wrench className="h-3.5 w-3.5" />Tools</button>
+              <span className="flex h-8 items-center rounded-lg bg-white/10 px-2.5 font-semibold text-white">Read</span>
+              <button onClick={onOpenTools} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-slate-300 transition hover:bg-white/10 hover:text-white"><Shield className="h-3.5 w-3.5" />Protect</button>
+            </div>
+          )}
         </div>
 
         {/* Center: Pagination, Zoom Controls, Rotation, Fit & Hand Tool */}
         <div className="flex items-center gap-1 sm:gap-2">
           {/* Page Counter: [ < ] [ 1 / 4 ] [ > ] */}
-          <div className="flex items-center gap-0.5 bg-[#202124]/90 rounded px-1 py-0.5 border border-white/10">
+          <div className="pdf-toolbar-control flex items-center gap-0.5 bg-[#202124]/90 rounded px-1 py-0.5 border border-white/10">
             <button
               onClick={() => scrollToPage(currentPage - 1)}
               disabled={currentPage <= 1 || loading}
@@ -575,7 +627,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           <div className="h-4 w-px bg-white/15 hidden xs:block" />
 
           {/* Zoom: [ - ] [ 100% ] [ + ] */}
-          <div className="flex items-center gap-0.5 bg-[#202124]/90 rounded px-1 py-0.5 border border-white/10">
+          <div className="pdf-toolbar-control flex items-center gap-0.5 bg-[#202124]/90 rounded px-1 py-0.5 border border-white/10">
             <button
               onClick={handleZoomOut}
               disabled={scale <= 0.35 || loading}
@@ -635,6 +687,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
         {/* Right: Security Badge & Fullscreen */}
         <div className="flex items-center gap-1.5">
+          <button onClick={toggleTheme} className="p-1.5 rounded hover:bg-white/10 text-slate-300 hover:text-white transition" title={`Appearance: ${isDark ? 'Dark' : 'Light'}`} aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
+            <Contrast className="h-4 w-4" />
+          </button>
           <div
             className="hidden lg:flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-medium"
             title="Forensic Watermark & Protected Canvas Active"
@@ -653,10 +708,15 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         </div>
       </header>
 
-      {/* =========================================================================
-          2. Main Body: Thumbnail Sidebar (Left) + Document Viewport (Center)
-         ========================================================================= */}
       <div className="flex-1 flex min-h-0 w-full relative overflow-hidden">
+        <nav className="pdf-tool-rail hidden w-12 shrink-0 flex-col items-center gap-2 border-r border-white/10 bg-[#252629] py-3 md:flex" aria-label="PDF reading tools">
+          <button onClick={() => setIsHandTool(false)} className={`grid h-9 w-9 place-items-center rounded-lg transition ${!isHandTool ? 'bg-brand-600 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`} title="Select"><MousePointer2 className="h-4 w-4" /></button>
+          <button onClick={() => setIsHandTool(true)} className={`grid h-9 w-9 place-items-center rounded-lg transition ${isHandTool ? 'bg-brand-600 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`} title="Pan"><Hand className="h-4 w-4" /></button>
+          <div className="my-1 h-px w-6 bg-white/10" />
+          <button onClick={() => setSidebarOpen(value => !value)} className={`grid h-9 w-9 place-items-center rounded-lg transition ${sidebarOpen ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`} title="Thumbnails"><PanelLeft className="h-4 w-4" /></button>
+          <button onClick={handleRotate} className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white" title="Rotate"><RotateCw className="h-4 w-4" /></button>
+          <button onClick={handleToggleFit} className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white" title={fitMode === 'width' ? 'Fit page' : 'Fit width'}><Maximize2 className="h-4 w-4" /></button>
+        </nav>
         {/* Left Thumbnail Sidebar (Desktop & Mobile Drawer) */}
         {sidebarOpen && (
           <>
@@ -666,7 +726,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               className="md:hidden fixed inset-0 bg-black/60 z-30 backdrop-blur-sm transition-opacity"
             />
 
-            <aside className="w-44 sm:w-48 shrink-0 bg-[#202124] border-r border-black/40 flex flex-col z-30 h-full overflow-hidden select-none absolute md:relative top-0 bottom-0 left-0 shadow-2xl md:shadow-none animate-in slide-in-from-left duration-200">
+            <aside className="pdf-thumbnail-sidebar w-44 sm:w-48 shrink-0 bg-[#202124] border-r border-white/10 flex flex-col z-30 h-full overflow-hidden select-none absolute md:relative top-0 bottom-0 left-0 shadow-2xl md:shadow-none animate-in slide-in-from-left duration-200">
               <div className="p-2.5 border-b border-white/10 flex items-center justify-between text-xs font-semibold text-slate-300">
                 <span className="flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-blue-400" />
@@ -699,7 +759,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                     >
                       <div
                         ref={(el) => (thumbRefs.current[idx] = el)}
-                        className={`w-28 sm:w-32 min-h-[140px] rounded transition-all duration-150 p-1 flex items-center justify-center bg-[#282c34] border ${
+                        className={`pdf-thumbnail-placeholder w-28 sm:w-32 min-h-[140px] rounded transition-all duration-150 p-1 flex items-center justify-center bg-[#282c34] border ${
                           isActive
                             ? 'border-blue-500 ring-2 ring-blue-500 shadow-lg shadow-blue-500/20'
                             : 'border-white/15 hover:border-white/40 shadow'
@@ -729,13 +789,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          className={`flex-1 min-h-0 w-full overflow-y-auto overflow-x-auto relative flex flex-col items-center py-6 px-2 sm:px-6 bg-[#525659] ${
+          className={`pdf-canvas-viewport flex-1 min-h-0 w-full overflow-y-auto overflow-x-auto relative flex flex-col items-center py-6 px-2 sm:px-6 bg-[#3b3d40] ${
             isHandTool ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
           }`}
         >
           {/* Anti-Screenshot Privacy Shield Overlay */}
           {isWindowBlurred && (
-            <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-2xl flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-150">
+            <div className="pdf-privacy-shield fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-2xl flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-150">
               <div className="w-16 h-16 rounded-2xl bg-brand-500/10 border border-brand-500/30 text-brand-400 flex items-center justify-center mb-4 shadow-xl">
                 <Lock className="w-8 h-8 animate-pulse" />
               </div>
@@ -754,43 +814,42 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
           {/* Screenshot Key Alert Toast */}
           {screenshotWarning && (
-            <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-semibold shadow-2xl flex items-center gap-2 animate-bounce">
+            <div className="pdf-security-toast fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-semibold shadow-2xl flex items-center gap-2 animate-bounce">
               <EyeOff className="w-4 h-4" />
               <span>{screenshotWarning}</span>
             </div>
           )}
 
-          {/* Loading Indicator */}
-          {loading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#525659]/90 z-20">
-              <Loader2 className="w-9 h-9 text-blue-400 animate-spin" />
-              <p className="text-xs font-medium text-slate-200">Decrypting & rendering document...</p>
+          {passwordCallback && (
+            <div className="pdf-native-password-backdrop absolute inset-0 z-30 grid place-items-center bg-[#26272a]/95 p-4 backdrop-blur-xl">
+              <form onSubmit={handleNativePasswordSubmit} className="pdf-native-password-panel w-full max-w-sm rounded-3xl border border-white/10 bg-[#1c1d20] p-6 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-600 text-white"><Lock className="h-5 w-5" /></div>
+                <h3 className="mt-5 text-lg font-semibold tracking-tight text-white">This PDF is password protected</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-400">Enter the password embedded in the original PDF file. It stays in this viewer session only.</p>
+                <input autoFocus type="password" value={nativePassword} onChange={event => { setNativePassword(event.target.value); setNativePasswordError(null); }} placeholder="Original PDF password" className="mt-5 h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10" />
+                {nativePasswordError && <p className="mt-2 text-xs text-red-300">{nativePasswordError}</p>}
+                <button type="submit" disabled={!nativePassword} className="mt-4 h-11 w-full rounded-xl bg-brand-600 text-sm font-semibold text-white transition hover:bg-brand-700 active:scale-[0.985] disabled:opacity-40">Unlock and view</button>
+              </form>
             </div>
           )}
 
-          {/* Error Message */}
-          {error && (
-            <div className="m-auto text-center p-6 max-w-md rounded-2xl bg-red-950/80 border border-red-800 text-red-200 space-y-2">
-              <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-1" />
-              <h4 className="font-bold text-sm text-white">Unable to Load PDF</h4>
-              <p className="text-xs text-red-300">{error}</p>
+          {loading && !passwordCallback && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#3b3d40]/90 z-20">
+              <Loader2 className="w-9 h-9 text-blue-400 animate-spin" />
+              <p className="text-xs font-medium text-slate-200">Decrypting & rendering document...</p>
             </div>
           )}
 
           {/* Rendered Canvas Pages Stack */}
           {!loading && !error && numPages > 0 && (
             <div className="flex flex-col items-center gap-6 relative">
-              {/* Dynamic Forensic Watermark Overlay */}
-              <div className="fixed inset-0 pointer-events-none z-20 overflow-hidden select-none flex flex-wrap items-center justify-around opacity-15 rotate-[-28deg] gap-20 p-8">
-                {Array.from({ length: 16 }).map((_, i) => (
-                  <span
-                    key={`wm-${i}`}
-                    className="text-[11px] font-mono font-bold text-white tracking-widest whitespace-nowrap select-none"
-                  >
-                    {watermarkText || `DOCVAULT X • PROTECTED VIEW • ${title} • DO NOT COPY`}
-                  </span>
-                ))}
-              </div>
+              {watermarkText && (
+                <div className="fixed inset-0 pointer-events-none z-20 overflow-hidden select-none flex flex-wrap items-center justify-around opacity-15 rotate-[-28deg] gap-20 p-8">
+                  {Array.from({ length: 16 }).map((_, i) => (
+                    <span key={`wm-${i}`} className="text-[11px] font-mono font-bold text-white tracking-widest whitespace-nowrap select-none">{watermarkText}</span>
+                  ))}
+                </div>
+              )}
 
               {/* Individual Pages */}
               {Array.from({ length: numPages }).map((_, index) => {

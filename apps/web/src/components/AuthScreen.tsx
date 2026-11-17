@@ -1,237 +1,166 @@
-import React, { useState } from 'react';
-import { ShieldCheck, Lock, Mail, User, Building, ArrowRight, AlertTriangle, ArrowLeft } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  Eye,
+  EyeOff,
+  Fingerprint,
+  KeyRound,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  X
+} from 'lucide-react';
 import { ApiClient } from '../api/client';
+import { Contrast } from 'lucide-react';
+import { useTheme } from '../theme/ThemeContext';
 
 interface AuthScreenProps {
-  onAuthenticated: () => void;
-  onBackToLanding?: () => void;
-  isAdminMode?: boolean;
+  isOpen?: boolean;
+  onAuthenticated: () => void | Promise<void>;
+  onClose?: () => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBackToLanding, isAdminMode }) => {
-  const [isRegister, setIsRegister] = useState(false);
+export const AuthScreen: React.FC<AuthScreenProps> = ({ isOpen = true, onAuthenticated, onClose }) => {
+  const { isDark, toggleTheme } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [orgName, setOrgName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && onClose && !loading) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, loading, onClose]);
 
-    try {
-      const endpoint = isRegister ? '/auth/register' : '/auth/login';
-      const body = isRegister
-        ? { email, password, name, organizationName: orgName || undefined }
-        : { email, password };
+  if (!isOpen) return null;
 
-      const res = await ApiClient.request<{ accessToken: string }>(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      ApiClient.setToken(res.accessToken);
-      onAuthenticated();
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed');
-    } finally {
-      setLoading(false);
-    }
+  const validate = () => {
+    const nextErrors: { email?: string; password?: string } = {};
+    if (!email.trim()) nextErrors.email = 'Enter your administrator email.';
+    else if (!/^\S+@\S+\.\S+$/.test(email.trim())) nextErrors.email = 'Enter a valid email address.';
+    if (!password) nextErrors.password = 'Enter your password.';
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
-  const handleDemoLogin = async () => {
-    setLoading(true);
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError(null);
+    if (!validate()) return;
+    setLoading(true);
     try {
-      const demoEmail = 'admin@docvault-demo.com';
-      const demoPass = 'DocVaultPass2026!';
-
-      // Try login first
-      try {
-        const loginRes = await ApiClient.request<{ accessToken: string }>('/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: demoEmail, password: demoPass })
-        });
-        ApiClient.setToken(loginRes.accessToken);
-        onAuthenticated();
-        return;
-      } catch {
-        // Register demo user if doesn't exist
-        const regRes = await ApiClient.request<{ accessToken: string }>('/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: demoEmail,
-            name: 'Security Executive',
-            password: demoPass,
-            organizationName: 'Global Defense Labs'
-          })
-        });
-        ApiClient.setToken(regRes.accessToken);
-        onAuthenticated();
-      }
+      const response = await ApiClient.request<{ accessToken: string }>('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password })
+      });
+      ApiClient.setToken(response.accessToken);
+      await onAuthenticated();
     } catch {
-      // Offline fallback: grant demo session directly so user can access the app immediately
-      ApiClient.setToken('demo_token_admin_exec');
-      onAuthenticated();
+      setError('The email or password is incorrect, or this account no longer has access.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-[#0A1222] to-[#17253A] text-slate-100">
-      <div className="w-full max-w-md bg-[#111D30] rounded-3xl shadow-2xl border border-slate-700/80 p-8 space-y-6">
-        {/* Back to Home / Landing Link */}
-        {onBackToLanding && (
-          <button
-            onClick={onBackToLanding}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-[#2DD4BF] transition mb-2"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Public Landing Page</span>
+    <div className="auth-theme-shell fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-[#050505]/82 px-4 py-6 backdrop-blur-xl sm:py-10" role="dialog" aria-modal="true" aria-labelledby="admin-login-title">
+      <button type="button" aria-label="Close sign in" onClick={onClose} className="absolute inset-0 cursor-default" />
+
+      <section className="relative z-10 grid w-full max-w-4xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0b0c0f] shadow-[0_32px_100px_rgba(0,0,0,0.62)] lg:grid-cols-[0.88fr_1.12fr]">
+        <aside className="relative hidden min-h-[36rem] overflow-hidden border-r border-white/10 bg-[#101114] p-10 lg:flex lg:flex-col lg:justify-between">
+          <div className="absolute inset-0 opacity-70 [background-image:radial-gradient(circle_at_18%_12%,rgba(255,106,0,0.24),transparent_34%),linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] [background-size:auto,32px_32px,32px_32px]" />
+          <div className="relative">
+            <div className="mb-10 flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-xl border border-[#ff7a00]/40 bg-[#ff6a00]/10 text-[#ff8a22] shadow-[0_0_26px_rgba(255,106,0,0.14)]">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold tracking-tight text-white">DocVault X</p>
+                <p className="text-[10px] tracking-[0.18em] text-neutral-500">ADMINISTRATION CONSOLE</p>
+              </div>
+            </div>
+            <p className="mb-3 text-xs font-medium tracking-[0.16em] text-[#ff8a22]">RESTRICTED ACCESS</p>
+            <h2 className="max-w-sm text-3xl font-semibold leading-[1.05] tracking-[-0.04em] text-white">Your document controls stay behind one verified identity.</h2>
+            <p className="mt-5 max-w-xs text-sm leading-6 text-neutral-400">Sign in to manage encrypted files, viewing policies, access links and the immutable audit trail.</p>
+          </div>
+          <div className="relative space-y-3 text-xs text-neutral-400">
+            {['Signed, one-hour administrator session', 'Tenant and role checks on every request', 'Server-enforced document permissions'].map(item => (
+              <div key={item} className="flex items-center gap-3">
+                <span className="grid h-5 w-5 place-items-center rounded-md bg-white/5 text-[#ff8a22]"><Check className="h-3 w-3" /></span>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="relative px-6 pb-8 pt-6 sm:px-10 sm:pb-10 sm:pt-8 lg:px-12 lg:pb-12 lg:pt-10">
+          <button type="button" onClick={toggleTheme} aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`} className={`absolute top-5 grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-neutral-500 transition hover:border-white/20 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a00] ${onClose ? 'right-16' : 'right-5'}`}>
+            <Contrast className="h-4 w-4" />
           </button>
-        )}
-
-        {/* Mode Badge */}
-        {isAdminMode && (
-          <div className="p-2.5 rounded-xl bg-[#2DD4BF]/10 border border-[#2DD4BF]/40 text-[#2DD4BF] text-xs flex items-center justify-center gap-2 font-mono font-bold">
-            <Lock className="w-3.5 h-3.5" />
-            <span>Security Clearance Verification</span>
-          </div>
-        )}
-
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 to-[#2DD4BF] mx-auto flex items-center justify-center text-[#0A1222] font-black shadow-lg shadow-[#2DD4BF]/20">
-            <ShieldCheck className="w-7 h-7" />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-white">
-            DocVault X Platform
-          </h1>
-          <p className="text-xs text-slate-400">
-            {isRegister ? 'Create your tenant organization' : 'Sign in to your protected document vault'}
-          </p>
-        </div>
-
-        {error && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isRegister && (
-            <>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Full Name
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Alice Walker"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Organization / Tenant Name
-                </label>
-                <div className="relative">
-                  <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    placeholder="Acme Security Corp"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-              </div>
-            </>
+          {onClose && (
+            <button type="button" onClick={onClose} aria-label="Close sign in" className="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-neutral-500 transition hover:border-white/20 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a00] active:scale-95">
+              <X className="h-4 w-4" />
+            </button>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="alice@acme.com"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
+          <div className="mb-8 pr-12">
+            <div className="mb-6 grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-neutral-200 lg:hidden"><Fingerprint className="h-5 w-5" /></div>
+            <p className="mb-2 text-xs font-medium tracking-[0.14em] text-neutral-500">IDENTITY VERIFICATION</p>
+            <h1 id="admin-login-title" className="text-2xl font-semibold tracking-[-0.035em] text-white sm:text-3xl">Sign in to the vault</h1>
+            <p className="mt-2 text-sm leading-6 text-neutral-400">Use the administrator credentials assigned to this workspace.</p>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
+          {error && (
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-400/20 bg-red-400/[0.07] px-4 py-3 text-xs leading-5 text-red-200" role="alert">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span>
             </div>
-          </div>
+          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm shadow-md shadow-brand-500/20 active:scale-98 transition flex items-center justify-center gap-2"
-          >
-            <span>{isRegister ? 'Create Organization & Account' : 'Sign In'}</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </form>
+          <form onSubmit={handleSubmit} noValidate className="space-y-5">
+            <div>
+              <label htmlFor="admin-email" className="mb-2 block text-xs font-medium text-neutral-300">Administrator email</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-600" />
+                <input id="admin-email" type="email" autoComplete="username" autoFocus value={email} onChange={event => { setEmail(event.target.value); setFieldErrors(current => ({ ...current, email: undefined })); }} placeholder="admin@docvaultx.com" aria-invalid={Boolean(fieldErrors.email)} className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.035] pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-neutral-600 hover:border-white/20 focus:border-[#ff7a00]/70 focus:ring-4 focus:ring-[#ff6a00]/10" />
+              </div>
+              {fieldErrors.email && <p className="mt-2 text-xs text-red-300">{fieldErrors.email}</p>}
+            </div>
 
-        {/* Quick Demo Access */}
-        <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            disabled={loading}
-            className="w-full py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs transition"
-          >
-            Instant Demo Account (One-Click)
-          </button>
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label htmlFor="admin-password" className="text-xs font-medium text-neutral-300">Password</label>
+                <span className="text-[10px] tracking-wide text-neutral-600">CASE SENSITIVE</span>
+              </div>
+              <div className="relative">
+                <KeyRound className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-600" />
+                <input id="admin-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={event => { setPassword(event.target.value); setFieldErrors(current => ({ ...current, password: undefined })); }} placeholder="Enter your password" aria-invalid={Boolean(fieldErrors.password)} className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.035] pl-11 pr-12 text-sm text-white outline-none transition placeholder:text-neutral-600 hover:border-white/20 focus:border-[#ff7a00]/70 focus:ring-4 focus:ring-[#ff6a00]/10" />
+                <button type="button" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-neutral-600 transition hover:bg-white/5 hover:text-neutral-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a00]">
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {fieldErrors.password && <p className="mt-2 text-xs text-red-300">{fieldErrors.password}</p>}
+            </div>
 
-          <div className="text-center">
-            <button
-              onClick={() => {
-                setError(null);
-                setIsRegister(!isRegister);
-              }}
-              className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
-            >
-              {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+            <button type="submit" disabled={loading} className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#ff6a00] px-5 text-sm font-semibold text-white shadow-[0_12px_32px_rgba(255,106,0,0.18)] transition hover:bg-[#ff7a00] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff8a22] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0c0f] active:scale-[0.985] disabled:cursor-wait disabled:opacity-60">
+              {loading ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /><span>Verifying access</span></> : <><LockKeyhole className="h-4 w-4" /><span>Continue securely</span><ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></>}
             </button>
+          </form>
+
+          <div className="mt-7 flex items-start gap-3 border-t border-white/10 pt-5 text-[11px] leading-5 text-neutral-600">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
+            <p>Access attempts are validated by the server and recorded in the security audit trail.</p>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

@@ -28,12 +28,20 @@ documentShareRouter.post(
       watermarkTemplate: z.string().max(255).nullable().optional(),
       allowDownload: z.boolean().default(false),
       singleSessionOnly: z.boolean().default(false),
-      alertOnSuspiciousAccess: z.boolean().default(true)
+      alertOnSuspiciousAccess: z.boolean().default(true),
+      password: z.string().min(1).max(128).nullable().optional()
     });
 
     const parse = schema.safeParse(req.body);
     if (!parse.success) {
       return res.status(400).json({ error: 'Validation failed', details: parse.error.format() });
+    }
+
+    const documentPolicy = db.getActivePolicy(doc.id);
+    if (documentPolicy?.passwordHash && !parse.data.password?.trim()) {
+      return res.status(400).json({
+        error: 'A password-protected document requires a password-protected share link'
+      });
     }
 
     const now = new Date();
@@ -45,6 +53,14 @@ documentShareRouter.post(
     // High entropy random token (32 bytes = 256 bits of entropy)
     const rawToken = crypto.randomBytes(32).toString('base64url');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    // Secure password hashing with PBKDF2
+    let passwordHash: string | null = null;
+    if (parse.data.password && parse.data.password.trim().length > 0) {
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = crypto.pbkdf2Sync(parse.data.password.trim(), salt, 10000, 64, 'sha512').toString('hex');
+      passwordHash = `${salt}:${hash}`;
+    }
 
     const share = db.createShareLink({
       organizationId: req.user!.organizationId,
@@ -58,6 +74,7 @@ documentShareRouter.post(
       watermarkTemplate: parse.data.watermarkTemplate || null,
       allowDownload: parse.data.allowDownload,
       singleSessionOnly: parse.data.singleSessionOnly,
+      passwordHash,
       alertOnSuspiciousAccess: parse.data.alertOnSuspiciousAccess
     });
 
@@ -74,7 +91,8 @@ documentShareRouter.post(
         durationSeconds: share.durationSeconds,
         maxOpens: share.maxOpens,
         expirySeconds: parse.data.expirySeconds,
-        singleSessionOnly: share.singleSessionOnly
+        singleSessionOnly: share.singleSessionOnly,
+        hasPassword: !!passwordHash
       })
     });
 
@@ -87,7 +105,8 @@ documentShareRouter.post(
       firstOpenedAt: share.firstOpenedAt,
       maxOpens: share.maxOpens,
       openCount: share.openCount,
-      singleSessionOnly: share.singleSessionOnly
+      singleSessionOnly: share.singleSessionOnly,
+      hasPassword: !!passwordHash
     });
   }
 );
@@ -98,14 +117,19 @@ documentShareRouter.get('/:id/shares', (req: AuthenticatedRequest, res: Response
     return res.status(404).json({ error: 'Document not found' });
   }
 
-  const shares = db.listShareLinksByDocument(doc.id);
+  const rawShares = db.listShareLinksByDocument(doc.id);
+  const shares = rawShares.map(s => ({
+    ...s,
+    hasPassword: !!s.passwordHash,
+    passwordHash: undefined
+  }));
   return res.json({ shares });
 });
 
 /**
  * 2. POST /shares/:id/revoke: Sender revokes active share link
  */
-shareRouter.post('/:id/revoke', authenticate, (req: AuthenticatedRequest, res: Response) => {
+shareRouter.post('/:id/revoke', authenticate, requireRole(['owner', 'admin', 'sender']), (req: AuthenticatedRequest, res: Response) => {
   const share = db.findShareLinkById(req.params['id']!);
   if (!share || share.organizationId !== req.user!.organizationId) {
     return res.status(404).json({ error: 'Share link not found' });
@@ -129,7 +153,7 @@ shareRouter.post('/:id/revoke', authenticate, (req: AuthenticatedRequest, res: R
 /**
  * 2b. POST /shares/:id/extend: Sender extends expiry of an active or expired link
  */
-shareRouter.post('/:id/extend', authenticate, (req: AuthenticatedRequest, res: Response) => {
+shareRouter.post('/:id/extend', authenticate, requireRole(['owner', 'admin', 'sender']), (req: AuthenticatedRequest, res: Response) => {
   const schema = z.object({
     additionalSeconds: z.number().int().min(1).max(60 * 60 * 24 * 365).default(1800) // default 30 mins
   });
@@ -167,7 +191,7 @@ shareRouter.post('/:id/extend', authenticate, (req: AuthenticatedRequest, res: R
 /**
  * 2c. POST /shares/:id/regenerate: Sender regenerates token for a link
  */
-shareRouter.post('/:id/regenerate', authenticate, (req: AuthenticatedRequest, res: Response) => {
+shareRouter.post('/:id/regenerate', authenticate, requireRole(['owner', 'admin', 'sender']), (req: AuthenticatedRequest, res: Response) => {
   const share = db.findShareLinkById(req.params['id']!);
   if (!share || share.organizationId !== req.user!.organizationId) {
     return res.status(404).json({ error: 'Share link not found' });
@@ -246,6 +270,42 @@ shareRouter.post('/:token/session', (req: Request, res: Response) => {
       userAgent
     });
     return res.status(410).json({ error: 'Document expired: Access duration has ended' });
+  }
+
+  // 2a. Password Protection Gate: verify document access password if configured by sender
+  if (share.passwordHash) {
+    const candidatePassword = req.body?.password;
+    if (!candidatePassword || typeof candidatePassword !== 'string' || candidatePassword.trim().length === 0) {
+      return res.status(401).json({
+        error: 'PASSWORD_REQUIRED',
+        requiresPassword: true,
+        message: 'This document is secured with an access password. Please enter the password to view.'
+      });
+    }
+
+    const [salt, expectedHash] = share.passwordHash.split(':');
+    if (!salt || !expectedHash) {
+      return res.status(500).json({ error: 'Corrupted password configuration' });
+    }
+
+    const candidateHash = crypto.pbkdf2Sync(candidatePassword.trim(), salt, 10000, 64, 'sha512').toString('hex');
+    if (candidateHash !== expectedHash) {
+      db.recordSecurityAlert({
+        organizationId: share.organizationId,
+        documentId: doc.id,
+        shareLinkId: share.id,
+        severity: 'high',
+        alertType: 'REVOKED_ACCESS_ATTEMPT',
+        message: `Incorrect password attempt on protected document from IP ${ipHash}`,
+        ipHash,
+        userAgent
+      });
+      return res.status(403).json({
+        error: 'INVALID_PASSWORD',
+        requiresPassword: true,
+        message: 'Incorrect password. Access denied.'
+      });
+    }
   }
 
   // 2b. If first-open expiry semantics, establish the single authoritative expiry timestamp on the first successful open

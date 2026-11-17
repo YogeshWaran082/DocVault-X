@@ -9,7 +9,8 @@ import {
   Link as LinkIcon,
   RotateCw,
   PlusCircle,
-  ShieldBan
+  ShieldBan,
+  Lock
 } from 'lucide-react';
 import { Document } from '../types';
 import { ApiClient } from '../api/client';
@@ -26,6 +27,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, isOpen, onClos
   const [expiryType, setExpiryType] = useState<'FIRST_OPEN' | 'ABSOLUTE'>('FIRST_OPEN');
   const [maxOpens, setMaxOpens] = useState<string>('');
   const [singleSessionOnly, setSingleSessionOnly] = useState(false);
+  const [enablePassword, setEnablePassword] = useState(false);
+  const [accessPassword, setAccessPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [enableWatermark, setEnableWatermark] = useState(false);
   const [watermarkTemplate, setWatermarkTemplate] = useState('CONFIDENTIAL • {ip} • {date}');
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
@@ -72,7 +76,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, isOpen, onClos
         expiryType,
         maxOpens: maxOpens ? parseInt(maxOpens, 10) : null,
         watermarkTemplate: enableWatermark ? watermarkTemplate : null,
-        singleSessionOnly
+        singleSessionOnly,
+        password: enablePassword && accessPassword.trim() ? accessPassword.trim() : null
       });
 
       const fullUrl = `${window.location.origin}/#/share/${res.token}`;
@@ -325,6 +330,47 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, isOpen, onClos
               <p className="text-[11px] text-slate-400 pl-6">
                 {enableWatermark ? 'Dynamic watermark overlay will display recipient IP & time.' : 'Clean document view (no watermark overlay).'}
               </p>
+            </div>
+
+            {/* Password Protection */}
+            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={enablePassword}
+                  onChange={(e) => setEnablePassword(e.target.checked)}
+                  className="rounded accent-orange-600 w-4 h-4"
+                />
+                <div className="flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-orange-500" />
+                  <span>Secure Document with Access Password</span>
+                </div>
+              </label>
+
+              {enablePassword && (
+                <div className="pl-6 space-y-1.5 animate-in fade-in duration-200">
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required={enablePassword}
+                      value={accessPassword}
+                      onChange={(e) => setAccessPassword(e.target.value)}
+                      placeholder="Enter access password for receiver"
+                      className="w-full px-3 py-1.5 pr-12 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-medium"
+                    >
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Recipients must enter this exact password before the document decrypts and opens in memory.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Forwarded link security disclosure */}

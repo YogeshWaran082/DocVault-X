@@ -23,6 +23,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   onGoToLanding
 }) => {
+  const canManageDocuments = ['owner', 'admin', 'sender'].includes(organization.role);
+
   return (
     <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -70,13 +72,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Upload Button */}
-          <button
-            onClick={onOpenUpload}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-medium text-xs sm:text-sm shadow-sm transition active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Upload Document</span>
-          </button>
+          {canManageDocuments && (
+            <button
+              onClick={onOpenUpload}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-medium text-xs sm:text-sm shadow-sm transition active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Upload Document</span>
+            </button>
+          )}
 
           {/* Theme Toggle */}
           <button

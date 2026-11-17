@@ -8,6 +8,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { PdfViewer } from '../PdfViewer';
+import { UnableToOpenPopup } from '../UnableToOpenPopup';
 
 interface LiveDemoViewerModalProps {
   isOpen: boolean;
@@ -25,7 +26,7 @@ export const LiveDemoViewerModal: React.FC<LiveDemoViewerModalProps> = ({
 }) => {
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [docTitle, setDocTitle] = useState<string>('DocVaultX_Security_Whitepaper.pdf');
-  const [watermarkActive, setWatermarkActive] = useState<boolean>(true);
+  const [viewerError, setViewerError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize with sample PDF
@@ -48,28 +49,41 @@ export const LiveDemoViewerModal: React.FC<LiveDemoViewerModalProps> = ({
       setCurrentUrl(url);
       setDocTitle('DocVaultX_Security_Whitepaper_v2.4.pdf');
     } catch {
-      // Ignored
+      setViewerError(true);
     }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        setViewerError(true);
+        e.target.value = '';
+        return;
+      }
       if (currentUrl) {
         URL.revokeObjectURL(currentUrl);
       }
       const url = URL.createObjectURL(file);
       setCurrentUrl(url);
       setDocTitle(file.name);
+      setViewerError(false);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0A1222] animate-in fade-in duration-200 select-none">
+    <div className="viewer-theme-shell fixed inset-0 z-50 flex flex-col bg-[#0A1222] animate-in fade-in duration-200 select-none">
+      <UnableToOpenPopup
+        isOpen={viewerError}
+        onDismiss={() => {
+          setViewerError(false);
+          fileInputRef.current?.click();
+        }}
+      />
       {/* Top Application Bar matching Image 1 corporate styling */}
-      <header className="h-14 px-4 bg-[#262B34] border-b border-slate-700/80 flex items-center justify-between text-white shrink-0">
+      <header className="viewer-app-header h-14 px-4 bg-[#262B34] border-b border-slate-700/80 flex items-center justify-between text-white shrink-0">
         {/* Left: Brand & File Title */}
         <div className="flex items-center gap-3 overflow-hidden">
           <div className="w-8 h-8 rounded-lg bg-[#1A1F26] border border-slate-600 flex items-center justify-center text-[#2DD4BF] shrink-0">
@@ -104,7 +118,7 @@ export const LiveDemoViewerModal: React.FC<LiveDemoViewerModalProps> = ({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A1F26] hover:bg-slate-800 border border-slate-700 hover:border-[#2DD4BF]/50 text-xs font-medium text-slate-200 transition"
+            className="viewer-app-action flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A1F26] hover:bg-slate-800 border border-slate-700 hover:border-[#2DD4BF]/50 text-xs font-medium text-slate-200 transition"
             title="Open any PDF from your computer with total privacy"
           >
             <Upload className="w-3.5 h-3.5 text-[#2DD4BF]" />
@@ -117,7 +131,7 @@ export const LiveDemoViewerModal: React.FC<LiveDemoViewerModalProps> = ({
               loadSamplePdf();
               setDocTitle('StripesShop_Sales_Invoice_9000000001.pdf');
             }}
-            className="hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1A1F26] hover:bg-slate-800 border border-slate-700 text-xs text-slate-300 transition"
+            className="viewer-app-action hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1A1F26] hover:bg-slate-800 border border-slate-700 text-xs text-slate-300 transition"
             title="Switch to StripesShop Sales Invoice"
           >
             <RefreshCw className="w-3.5 h-3.5 text-[#2DD4BF]" />
@@ -130,30 +144,17 @@ export const LiveDemoViewerModal: React.FC<LiveDemoViewerModalProps> = ({
               onClose();
               onOpenDvx();
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A1F26] hover:bg-slate-800 border border-slate-700 hover:border-[#2DD4BF]/50 text-xs font-medium text-slate-200 transition"
+            className="viewer-app-action flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A1F26] hover:bg-slate-800 border border-slate-700 hover:border-[#2DD4BF]/50 text-xs font-medium text-slate-200 transition"
             title="Open an encrypted .dvx container file"
           >
             <FileBox className="w-3.5 h-3.5 text-[#2DD4BF]" />
             <span className="hidden sm:inline">Open .DVX</span>
           </button>
 
-          {/* Watermark Toggle */}
-          <button
-            onClick={() => setWatermarkActive(!watermarkActive)}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-mono font-medium border transition ${
-              watermarkActive
-                ? 'bg-[#2DD4BF]/20 text-[#2DD4BF] border-[#2DD4BF]/40'
-                : 'bg-[#1A1F26] text-slate-400 border-slate-700'
-            }`}
-            title="Toggle forensic watermark overlay"
-          >
-            Watermark: {watermarkActive ? 'ON' : 'OFF'}
-          </button>
-
           {/* Close Modal Button */}
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-600/80 text-slate-300 hover:text-white transition ml-2"
+            className="viewer-app-close p-1.5 rounded-lg bg-slate-800 hover:bg-rose-600/80 text-slate-300 hover:text-white transition ml-2"
             title="Close Viewer"
           >
             <X className="w-5 h-5" />
@@ -167,11 +168,12 @@ export const LiveDemoViewerModal: React.FC<LiveDemoViewerModalProps> = ({
           <PdfViewer
             url={currentUrl}
             title={docTitle}
-            watermarkText={
-              watermarkActive
-                ? 'CONFIDENTIAL • USER_ID: 884-AX • 2026-11-16 10:51 UTC • DO NOT DISTRIBUTE'
-                : null
-            }
+            onErrorDismiss={() => {
+              if (currentUrl) URL.revokeObjectURL(currentUrl);
+              setCurrentUrl(null);
+              fileInputRef.current?.click();
+            }}
+            watermarkText={null}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-slate-400 text-xs">

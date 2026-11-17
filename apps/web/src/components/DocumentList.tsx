@@ -9,15 +9,22 @@ import {
   Search,
   Lock,
   CheckCircle2,
-  Share2
+  Share2,
+  KeyRound,
+  EyeOff,
+  X,
+  Wrench,
+  Stamp
 } from 'lucide-react';
 import { Document, User } from '../types';
 import { ApiClient } from '../api/client';
 import { ShareModal } from './ShareModal';
+import { PdfSecurityTools } from './PdfSecurityTools';
 
 interface DocumentListProps {
   documents: Document[];
   user: User;
+  role: 'owner' | 'admin' | 'sender' | 'recipient' | 'auditor';
   onRefresh: () => void;
   onPreview: (doc: Document) => void;
 }
@@ -25,14 +32,25 @@ interface DocumentListProps {
 export const DocumentList: React.FC<DocumentListProps> = ({
   documents,
   user: _user,
+  role,
   onRefresh,
   onPreview
 }) => {
+  const canManageDocuments = ['owner', 'admin', 'sender'].includes(role);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'revoked'>('all');
   const [exportWarningDoc, setExportWarningDoc] = useState<Document | null>(null);
   const [shareDoc, setShareDoc] = useState<Document | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [passwordDoc, setPasswordDoc] = useState<Document | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [toolsDoc, setToolsDoc] = useState<Document | null>(null);
+  const [watermarkDoc, setWatermarkDoc] = useState<Document | null>(null);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
+  const [watermarkTemplate, setWatermarkTemplate] = useState('CONFIDENTIAL • {user} • {date}');
+  const [watermarkError, setWatermarkError] = useState<string | null>(null);
 
   const filteredDocs = documents.filter((doc) => {
     if (statusFilter !== 'all' && doc.status !== statusFilter) return false;
@@ -111,6 +129,63 @@ export const DocumentList: React.FC<DocumentListProps> = ({
       setExportWarningDoc(null);
     } catch (err: any) {
       alert(err.message || 'Export failed');
+    }
+  };
+
+  const handlePasswordSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!passwordDoc) return;
+    if (newPassword && newPassword.length < 6) {
+      setPasswordError('Use at least 6 characters.');
+      return;
+    }
+    setActionLoading(passwordDoc.id);
+    setPasswordError(null);
+    try {
+      await ApiClient.updatePolicy(passwordDoc.id, { password: newPassword || null });
+      setPasswordDoc(null);
+      setNewPassword('');
+      onRefresh();
+    } catch (error: any) {
+      setPasswordError(error.message || 'Password could not be updated.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const openWatermarkSettings = async (doc: Document) => {
+    setWatermarkDoc(doc);
+    setWatermarkError(null);
+    setActionLoading(doc.id);
+    try {
+      const details = await ApiClient.getDocument(doc.id);
+      const current = details.activePolicy?.watermarkTemplate || '';
+      setWatermarkEnabled(Boolean(current));
+      setWatermarkTemplate(current || 'CONFIDENTIAL • {user} • {date}');
+    } catch (error: any) {
+      setWatermarkError(error.message || 'Could not load watermark policy.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const saveWatermarkSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!watermarkDoc) return;
+    if (watermarkEnabled && !watermarkTemplate.trim()) {
+      setWatermarkError('Enter watermark text or turn the watermark off.');
+      return;
+    }
+    setActionLoading(watermarkDoc.id);
+    setWatermarkError(null);
+    try {
+      await ApiClient.updatePolicy(watermarkDoc.id, { watermarkTemplate: watermarkEnabled ? watermarkTemplate.trim() : null });
+      setWatermarkDoc(null);
+      onRefresh();
+    } catch (error: any) {
+      setWatermarkError(error.message || 'Watermark policy could not be updated.');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -210,9 +285,14 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                           <FileText className="w-4 h-4" />
                         </div>
                         <div>
-                          <p className="font-semibold text-slate-900 dark:text-white truncate max-w-xs sm:max-w-sm">
-                            {doc.title}
-                          </p>
+                          <div className="flex max-w-xs items-center gap-2 sm:max-w-sm">
+                            <p className="truncate font-semibold text-slate-900 dark:text-white">{doc.title}</p>
+                            {doc.hasPassword && (
+                              <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20" title="Password required to open">
+                                <Lock className="h-2.5 w-2.5" /> Password
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-slate-400">
                             Uploaded {new Date(doc.createdAt).toLocaleDateString()}
                           </p>
@@ -254,7 +334,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         {/* 0. Share Link (Browser Viewing - No App Required) */}
-                        {doc.status === 'active' && (
+                        {canManageDocuments && doc.status === 'active' && !doc.hasPassword && (
                           <button
                             onClick={() => setShareDoc(doc)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-xs transition active:scale-95"
@@ -275,8 +355,19 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                           <span>View</span>
                         </button>
 
+                        {canManageDocuments && doc.status === 'active' && (doc.mimeDetected.includes('pdf') || doc.title.toLowerCase().endsWith('.pdf')) && (
+                          <button
+                            onClick={() => setToolsDoc(doc)}
+                            className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 dark:border-brand-400/20 dark:bg-brand-400/10 dark:text-brand-300 dark:hover:bg-brand-400/15"
+                            title="Open PDF security tools"
+                          >
+                            <Wrench className="h-3.5 w-3.5" />
+                            <span>PDF Tools</span>
+                          </button>
+                        )}
+
                         {/* 2. Download Standard PDF (Opens in Adobe, Chrome, Apple Preview) */}
-                        {doc.status === 'active' && (
+                        {canManageDocuments && doc.status === 'active' && !doc.hasPassword && (
                           <button
                             onClick={() => handleDownloadStandardDirect(doc)}
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium transition"
@@ -288,7 +379,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                         )}
 
                         {/* 3. Download Protected .dvx */}
-                        {doc.status === 'active' && (
+                        {canManageDocuments && doc.status === 'active' && (
                           <button
                             onClick={() => handleDownloadProtected(doc)}
                             title="Download self-destructing .dvx encrypted container (requires DocVault client app)"
@@ -299,8 +390,19 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                           </button>
                         )}
 
+                        {canManageDocuments && doc.status === 'active' && (
+                          <button
+                            onClick={() => openWatermarkSettings(doc)}
+                            disabled={actionLoading === doc.id}
+                            title="Manage viewer watermark in CRM"
+                            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition"
+                          >
+                            <Stamp className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+
                         {/* 4. Revoke */}
-                        {doc.status === 'active' && (
+                        {canManageDocuments && doc.status === 'active' && (
                           <button
                             onClick={() => handleRevoke(doc.id)}
                             disabled={actionLoading === doc.id}
@@ -311,15 +413,31 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                           </button>
                         )}
 
+                        {canManageDocuments && doc.status === 'active' && (
+                          <button
+                            onClick={() => {
+                              setPasswordDoc(doc);
+                              setNewPassword('');
+                              setPasswordError(null);
+                            }}
+                            title={doc.hasPassword ? 'Change or remove PDF password' : 'Add PDF password'}
+                            className={`p-1.5 rounded-lg border transition ${doc.hasPassword ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300' : 'border-slate-200 text-slate-400 hover:text-brand-600 dark:border-slate-800'}`}
+                          >
+                            <KeyRound className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+
                         {/* 5. Delete */}
-                        <button
-                          onClick={() => handleDelete(doc.id)}
-                          disabled={actionLoading === doc.id}
-                          title="Secure Delete"
-                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canManageDocuments && (
+                          <button
+                            onClick={() => handleDelete(doc.id)}
+                            disabled={actionLoading === doc.id}
+                            title="Secure Delete"
+                            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -378,6 +496,71 @@ export const DocumentList: React.FC<DocumentListProps> = ({
         isOpen={Boolean(shareDoc)}
         onClose={() => setShareDoc(null)}
       />
+
+      <PdfSecurityTools
+        document={toolsDoc}
+        documents={documents}
+        isOpen={Boolean(toolsDoc)}
+        onClose={() => setToolsDoc(null)}
+        onCompleted={onRefresh}
+      />
+
+      {passwordDoc && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <form onSubmit={handlePasswordSave} className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold tracking-[0.14em] text-brand-600">DOCUMENT ACCESS</p>
+                <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900 dark:text-white">{passwordDoc.hasPassword ? 'Change PDF password' : 'Add PDF password'}</h3>
+                <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">{passwordDoc.title}</p>
+              </div>
+              <button type="button" onClick={() => setPasswordDoc(null)} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="relative mt-5">
+              <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input type={showNewPassword ? 'text' : 'password'} autoFocus value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setPasswordError(null); }} placeholder={passwordDoc.hasPassword ? 'Enter a new password' : 'Create a password'} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-12 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 dark:border-slate-700 dark:bg-slate-950" />
+              <button type="button" onClick={() => setShowNewPassword(value => !value)} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800">{showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+            </div>
+            {passwordError && <p className="mt-2 text-xs text-red-500">{passwordError}</p>}
+            <div className="mt-5 flex items-center gap-2">
+              {passwordDoc.hasPassword && <button type="button" onClick={() => setNewPassword('')} className="mr-auto text-xs font-medium text-red-500 hover:text-red-600">Clear field to remove</button>}
+              <button type="button" onClick={() => setPasswordDoc(null)} className="h-10 rounded-xl px-4 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+              <button type="submit" disabled={actionLoading === passwordDoc.id} className="h-10 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-950">{newPassword ? 'Save password' : passwordDoc.hasPassword ? 'Remove password' : 'Save'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {watermarkDoc && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <form onSubmit={saveWatermarkSettings} className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold tracking-[0.14em] text-brand-600">CRM VIEWER POLICY</p>
+                <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900 dark:text-white">Watermark settings</h3>
+                <p className="mt-1 max-w-sm truncate text-xs text-slate-500">{watermarkDoc.title}</p>
+              </div>
+              <button type="button" onClick={() => setWatermarkDoc(null)} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>
+            </div>
+            <label className="mt-6 flex cursor-pointer items-center justify-between rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+              <span><span className="block text-sm font-semibold text-slate-900 dark:text-white">Show forensic watermark</span><span className="mt-0.5 block text-[11px] text-slate-500">Viewer users cannot hide this setting.</span></span>
+              <input type="checkbox" checked={watermarkEnabled} onChange={event => setWatermarkEnabled(event.target.checked)} className="h-5 w-5 accent-brand-600" />
+            </label>
+            {watermarkEnabled && (
+              <div className="mt-4">
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Watermark template</label>
+                <input autoFocus value={watermarkTemplate} onChange={event => { setWatermarkTemplate(event.target.value); setWatermarkError(null); }} maxLength={255} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-xs outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 dark:border-slate-700 dark:bg-slate-950" />
+                <p className="mt-2 text-[11px] text-slate-400">Available fields: {'{user}'}, {'{date}'}, {'{ip}'}</p>
+              </div>
+            )}
+            {watermarkError && <p className="mt-3 text-xs text-red-500">{watermarkError}</p>}
+            <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+              <button type="button" onClick={() => setWatermarkDoc(null)} className="h-10 rounded-xl px-4 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+              <button type="submit" disabled={actionLoading === watermarkDoc.id} className="h-10 rounded-xl bg-slate-900 px-5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-950">Save viewer policy</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

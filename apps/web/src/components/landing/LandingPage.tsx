@@ -1,24 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LandingNav } from './LandingNav';
 import { HeroSection } from './HeroSection';
 import { SupportedFormats } from './SupportedFormats';
 import { SecurityShowcase } from './SecurityShowcase';
 import { HowItWorks } from './HowItWorks';
 import { AppShowcase } from './AppShowcase';
-import { DownloadsSection } from './DownloadsSection';
 import { FaqSection } from './FaqSection';
 import { LandingFooter } from './LandingFooter';
+import { LiveDemoViewerModal } from './LiveDemoViewerModal';
 
 interface LandingPageProps {
-  onNavigateToAdmin: () => void;
+  onOpenLogin: () => void;
+  onOpenDashboard: () => void;
   onOpenDvx: () => void;
   isAuthenticated: boolean;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
-  onNavigateToAdmin,
+  onOpenLogin,
+  onOpenDashboard,
+  onOpenDvx,
   isAuthenticated,
 }) => {
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+
   const handleExploreFeatures = () => {
     const el = document.getElementById('features');
     if (el) {
@@ -27,10 +32,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#030303] text-[#f5f5f7] font-sans selection:bg-[#FF6A00] selection:text-white overflow-x-hidden">
+    <div className="landing-theme min-h-screen bg-[#030303] text-[#f5f5f7] font-sans selection:bg-[#FF6A00] selection:text-white overflow-x-hidden transition-colors duration-300">
       {/* Fixed Sticky Navigation */}
       <LandingNav
         isAuthenticated={isAuthenticated}
+        onTryApp={() => setIsViewerOpen(true)}
+        onOpenLogin={onOpenLogin}
+        onOpenDashboard={onOpenDashboard}
       />
 
       {/* Main Landing Sections */}
@@ -38,6 +46,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* Hero Section with Realistic Interactive Mockup */}
         <HeroSection
           onExploreFeatures={handleExploreFeatures}
+          onTryApp={() => setIsViewerOpen(true)}
         />
 
         {/* Supported File Formats */}
@@ -52,16 +61,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* Application Showcase - Multi-Platform Tabs */}
         <AppShowcase />
 
-        {/* Application Downloads - Native OS Builds */}
-        <DownloadsSection />
-
         {/* FAQ - Deep Technical Clarifications */}
         <FaqSection />
       </main>
 
-      {/* Footer with 3-Click Facebook Admin Easter Egg */}
-      <LandingFooter
-        onTriggerAdmin={onNavigateToAdmin}
+      <LandingFooter onTryApp={() => setIsViewerOpen(true)} />
+
+      <LiveDemoViewerModal
+        isOpen={isViewerOpen}
+        onClose={() => setIsViewerOpen(false)}
+        onOpenDvx={onOpenDvx}
       />
     </div>
   );

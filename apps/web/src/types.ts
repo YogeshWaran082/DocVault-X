@@ -24,6 +24,7 @@ export interface Document {
   status: 'active' | 'revoked' | 'deleted' | 'quarantined';
   createdAt: string;
   deletedAt?: string | null;
+  hasPassword?: boolean;
 }
 
 export interface Policy {
@@ -38,6 +39,7 @@ export interface Policy {
   allowExport: boolean;
   allowPrint: boolean;
   watermarkTemplate: string | null;
+  hasPassword?: boolean;
   createdAt: string;
 }
 
@@ -50,4 +52,13 @@ export interface AuditEvent {
   targetId: string;
   timestamp: string;
   detailsRedacted: string | null;
+}
+
+export interface PdfComparison {
+  identical: boolean;
+  left: { id: string; title: string; pages: number; sizeBytes: number };
+  right: { id: string; title: string; pages: number; sizeBytes: number };
+  sizeDeltaBytes: number;
+  pageCountDelta: number;
+  pagesWithDimensionChanges: number[];
 }

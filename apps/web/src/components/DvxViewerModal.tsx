@@ -2,17 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   FileCheck2,
-  AlertTriangle,
   Clock,
   ShieldCheck,
   ShieldAlert,
   Loader2,
   KeyRound,
   FileBox,
-  Eye
+  Eye,
+  Contrast
 } from 'lucide-react';
 import { ApiClient } from '../api/client';
 import { PdfViewer } from './PdfViewer';
+import { UnableToOpenPopup } from './UnableToOpenPopup';
+import { useTheme } from '../theme/ThemeContext';
 
 interface DvxViewerModalProps {
   isOpen: boolean;
@@ -20,6 +22,7 @@ interface DvxViewerModalProps {
 }
 
 export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose }) => {
+  const { isDark, toggleTheme } = useTheme();
   const [file, setFile] = useState<File | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const [inspectionResult, setInspectionResult] = useState<{
@@ -50,7 +53,6 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
   const [loadingContent, setLoadingContent] = useState(false);
   const [_remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const [errorState, setErrorState] = useState<'EXPIRED' | 'REVOKED' | 'UNAUTHORIZED' | 'ERROR' | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const blobUrlRef = useRef<string | null>(null);
 
@@ -75,7 +77,6 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
     setContentUrl(null);
     setLoadingContent(false);
     setErrorState(null);
-    setErrorMessage(null);
   };
 
   // 1. File Selection & Inspection
@@ -84,7 +85,6 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
     const selected = e.target.files[0];
     setFile(selected);
     setErrorState(null);
-    setErrorMessage(null);
     setInspectionResult(null);
     setSession(null);
     setContentUrl(null);
@@ -93,9 +93,11 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
     try {
       const result = await ApiClient.inspectDvx(selected);
       setInspectionResult(result);
-    } catch (err: any) {
+      if (!result.documentExists) {
+        setErrorState('ERROR');
+      }
+    } catch {
       setErrorState('ERROR');
-      setErrorMessage(err.message || 'Invalid or corrupted .dvx file');
     } finally {
       setInspecting(false);
     }
@@ -106,7 +108,6 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
     if (!inspectionResult) return;
     setAuthorizing(true);
     setErrorState(null);
-    setErrorMessage(null);
 
     try {
       const auth = await ApiClient.authorizeDvx(
@@ -130,10 +131,8 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
         setErrorState('REVOKED');
       } else if (err.message && (err.message.includes('401') || err.message.includes('Authorization required'))) {
         setErrorState('UNAUTHORIZED');
-        setErrorMessage(err.message);
       } else {
         setErrorState('ERROR');
-        setErrorMessage(err.message || 'Failed to authorize and open DVX file');
       }
     } finally {
       setAuthorizing(false);
@@ -170,6 +169,8 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
             triggerExpire();
           } else if (err.message && err.message.includes('403')) {
             setErrorState('REVOKED');
+          } else {
+            setErrorState('ERROR');
           }
         });
     }, 3000);
@@ -189,13 +190,28 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
     setErrorState('EXPIRED');
   };
 
+  const dismissOpenError = () => {
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+    setFile(null);
+    setInspectionResult(null);
+    setShareTokenInput('');
+    setSession(null);
+    setContentUrl(null);
+    setLoadingContent(false);
+    setErrorState(null);
+  };
+
   if (!isOpen) return null;
 
   const isPdf = session?.mimeType.includes('pdf') || session?.documentTitle.toLowerCase().endsWith('.pdf');
   const isImage = session?.mimeType.startsWith('image/');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in select-none">
+    <div className="viewer-theme-shell fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in select-none">
+      <UnableToOpenPopup isOpen={Boolean(errorState)} onDismiss={dismissOpenError} />
       <div className="bg-slate-900 rounded-2xl shadow-2xl border border-slate-800 w-full max-w-6xl h-[94vh] flex flex-col overflow-hidden text-slate-100">
         {/* Header */}
         <div className="p-3 sm:p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950 shrink-0">
@@ -222,6 +238,9 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <button onClick={toggleTheme} title={`Appearance: ${isDark ? 'Dark' : 'Light'}`} aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+              <Contrast className="h-5 w-5" />
+            </button>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
@@ -271,12 +290,14 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
                   url={contentUrl}
                   title={session?.documentTitle}
                   watermarkText={session?.watermarkTemplate}
+                  onErrorDismiss={dismissOpenError}
                 />
               ) : isImage ? (
                 <div className="flex-1 min-h-0 w-full flex items-center justify-center p-4 overflow-auto">
                   <img
                     src={contentUrl}
                     alt={session?.documentTitle}
+                    onError={() => setErrorState('ERROR')}
                     className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
                   />
                 </div>
@@ -356,12 +377,14 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
                     </div>
                     <div>
                       <span className="text-[10px] uppercase font-bold text-slate-500 block">System Status</span>
-                      <span className="capitalize text-emerald-400 font-semibold">{inspectionResult.status}</span>
+                      <span className={`capitalize font-semibold ${inspectionResult.documentExists ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {inspectionResult.status.replace('_', ' ')}
+                      </span>
                     </div>
                   </div>
 
                   {/* Authorization prompt */}
-                  <div className="pt-3 border-t border-slate-800 space-y-2">
+                  {inspectionResult.documentExists && <div className="pt-3 border-t border-slate-800 space-y-2">
                     <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                       <KeyRound className="w-3.5 h-3.5 text-brand-400" />
                       <span>Authorization Passkey / Share Token (Optional for Owners)</span>
@@ -376,19 +399,12 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
                     <p className="text-[11px] text-slate-500">
                       If you are the document owner, your logged-in credentials will automatically authorize decryption.
                     </p>
-                  </div>
-
-                  {errorMessage && (
-                    <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
-                      <span>{errorMessage}</span>
-                    </div>
-                  )}
+                  </div>}
 
                   <button
                     onClick={handleAuthorize}
-                    disabled={authorizing}
-                    className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs shadow-md shadow-brand-500/20 active:scale-98 transition flex items-center justify-center gap-2"
+                    disabled={authorizing || !inspectionResult.documentExists}
+                    className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed text-white font-semibold text-xs shadow-md shadow-brand-500/20 active:scale-98 transition flex items-center justify-center gap-2"
                   >
                     {authorizing ? (
                       <>
@@ -398,19 +414,17 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
                     ) : (
                       <>
                         <Eye className="w-4 h-4" />
-                        <span>Authorize & Open in Secure Viewer</span>
+                        <span>
+                          {inspectionResult.documentExists
+                            ? 'Authorize & Open in Secure Viewer'
+                            : 'Unavailable on This Server'}
+                        </span>
                       </>
                     )}
                   </button>
                 </div>
               )}
 
-              {errorState === 'ERROR' && errorMessage && (
-                <div className="p-3 rounded-xl bg-red-950/40 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{errorMessage}</span>
-                </div>
-              )}
             </div>
           )}
         </div>

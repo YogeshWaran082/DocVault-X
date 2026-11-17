@@ -1,13 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, Clock, AlertTriangle, ShieldAlert, Lock, Check, Download, EyeOff, Eye } from 'lucide-react';
+import { X, ShieldCheck, Clock, AlertTriangle, ShieldAlert, Lock, Check, Download, KeyRound, Contrast, Wrench } from 'lucide-react';
 import { Document, Policy, User } from '../types';
 import { ApiClient } from '../api/client';
 import { PdfViewer } from './PdfViewer';
+import { UnableToOpenPopup } from './UnableToOpenPopup';
+import { useTheme } from '../theme/ThemeContext';
+import { PdfSecurityTools } from './PdfSecurityTools';
 
 interface DocumentViewerModalProps {
   document: Document | null;
   policy: Policy | null;
   user: User;
+  documents: Document[];
+  canManage: boolean;
+  onDocumentsChanged: () => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -15,15 +21,23 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   document,
   policy,
   user,
+  documents,
+  canManage,
+  onDocumentsChanged,
   onClose
 }) => {
+  const { isDark, toggleTheme } = useTheme();
   const [leaseSecondsRemaining, setLeaseSecondsRemaining] = useState<number>(
     policy ? policy.offlineLeaseSeconds : 3000 // 50 mins default
   );
   const [contentUrl, setContentUrl] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState<boolean>(true);
   const [contentError, setContentError] = useState<string | null>(null);
-  const [showWatermark, setShowWatermark] = useState<boolean>(Boolean(policy?.watermarkTemplate));
+  const [requiresPassword, setRequiresPassword] = useState(false);
+  const [enteredPassword, setEnteredPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const [showPdfTools, setShowPdfTools] = useState(false);
 
   useEffect(() => {
     if (!document) {
@@ -32,9 +46,17 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
     }
 
     setLeaseSecondsRemaining(policy ? policy.offlineLeaseSeconds : 3000);
-    setShowWatermark(Boolean(policy?.watermarkTemplate));
     setLoadingContent(true);
     setContentError(null);
+    setEnteredPassword('');
+    setPasswordError(null);
+
+    if (document.hasPassword || policy?.hasPassword) {
+      setRequiresPassword(true);
+      setLoadingContent(false);
+      return;
+    }
+    setRequiresPassword(false);
 
     let activeBlobUrl: string | null = null;
 
@@ -45,7 +67,8 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
         setContentUrl(url);
       })
       .catch((err) => {
-        setContentError(err.message || 'Failed to decrypt and load document');
+        if (err.requiresPassword || err.status === 423) setRequiresPassword(true);
+        else setContentError(err.message || 'Failed to decrypt and load document');
       })
       .finally(() => {
         setLoadingContent(false);
@@ -57,6 +80,23 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
       }
     };
   }, [document, policy]);
+
+  const handlePasswordUnlock = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!document || !enteredPassword) return;
+    setUnlocking(true);
+    setPasswordError(null);
+    try {
+      const blob = await ApiClient.fetchViewContent(document.id, enteredPassword);
+      setContentUrl(URL.createObjectURL(blob));
+      setRequiresPassword(false);
+    } catch (error: any) {
+      if (error.requiresPassword || error.status === 423) setPasswordError('Incorrect password. Try again.');
+      else setContentError('Unable to open the protected PDF');
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
   useEffect(() => {
     if (!document) return;
@@ -78,9 +118,9 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
 
   const handleDownloadStandard = async () => {
     try {
-      await ApiClient.exportUnprotected(document.id, document.title);
-    } catch (err: any) {
-      alert(err.message || 'Download failed');
+      await ApiClient.exportUnprotected(document.id, document.title, enteredPassword || undefined);
+    } catch {
+      setContentError('Unable to complete the requested document action');
     }
   };
 
@@ -88,7 +128,19 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   const isImage = document.mimeDetected.startsWith('image/');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in select-none">
+    <div className="viewer-theme-shell fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in select-none">
+      <PdfSecurityTools
+        document={document}
+        documents={documents}
+        isOpen={showPdfTools}
+        onClose={() => setShowPdfTools(false)}
+        onCompleted={onDocumentsChanged}
+      />
+      <UnableToOpenPopup
+        isOpen={Boolean(contentError) || isExpired || isRevoked}
+        onDismiss={onClose}
+        actionLabel="Close viewer"
+      />
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-6xl h-[94vh] flex flex-col overflow-hidden">
         {/* Top bar */}
         <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
@@ -114,6 +166,17 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
           {/* Controls: Download & Watermark & Close */}
           <div className="flex items-center gap-2 sm:gap-3">
 
+            {canManage && isPdf && (
+              <button onClick={() => setShowPdfTools(true)} title="PDF security tools" className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 p-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 sm:px-3 dark:border-brand-400/20 dark:bg-brand-400/10 dark:text-brand-300">
+                <Wrench className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">PDF Tools</span>
+              </button>
+            )}
+
+            <button onClick={toggleTheme} title={`Appearance: ${isDark ? 'Dark' : 'Light'}`} aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`} className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Contrast className="h-4 w-4" />
+            </button>
+
             {/* Quick Standard PDF Download */}
             <button
               onClick={handleDownloadStandard}
@@ -123,17 +186,6 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
               <Download className="w-3.5 h-3.5" />
               <span>Download PDF</span>
             </button>
-
-            {/* Watermark toggle */}
-            {policy?.watermarkTemplate && (
-              <button
-                onClick={() => setShowWatermark(!showWatermark)}
-                title={showWatermark ? 'Hide Watermark Overlay' : 'Show Watermark Overlay'}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                {showWatermark ? <EyeOff className="w-4 h-4 text-amber-500" /> : <Eye className="w-4 h-4" />}
-              </button>
-            )}
 
             <button
               onClick={onClose}
@@ -154,14 +206,28 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
               <Lock className="w-3 h-3 text-brand-600" /> Decrypted in Memory Only
             </span>
           </div>
-          <span className="text-[10px] text-slate-400">
-            {showWatermark ? 'Dynamic watermark overlay active' : 'Clean document view (no watermark overlay)'}
-          </span>
+          <span className="text-[10px] text-slate-400">Viewing policy is controlled from the CRM</span>
         </div>
 
         {/* Main Document Viewport: Occupies 100% of remaining height */}
         <div className="flex-1 min-h-0 relative overflow-hidden bg-slate-900 flex flex-col items-center justify-center">
-          {isRevoked ? (
+          {requiresPassword ? (
+            <form onSubmit={handlePasswordUnlock} className="w-full max-w-sm rounded-3xl border border-white/10 bg-slate-950/95 p-6 text-left shadow-2xl">
+              <div className="mb-5 grid h-11 w-11 place-items-center rounded-2xl bg-white text-slate-950">
+                <KeyRound className="h-5 w-5" />
+              </div>
+              <h4 className="text-lg font-semibold tracking-tight text-white">Password required</h4>
+              <p className="mt-1 text-xs leading-5 text-slate-400">Enter the password created when this PDF was uploaded.</p>
+              <div className="relative mt-5">
+                <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input type="password" autoFocus value={enteredPassword} onChange={(event) => { setEnteredPassword(event.target.value); setPasswordError(null); }} placeholder="PDF access password" className="h-11 w-full rounded-xl border border-white/10 bg-white/5 pl-10 pr-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-white/30 focus:ring-4 focus:ring-white/5" />
+              </div>
+              {passwordError && <p className="mt-2 text-xs text-red-300">{passwordError}</p>}
+              <button type="submit" disabled={unlocking || !enteredPassword} className="mt-4 h-11 w-full rounded-xl bg-white text-sm font-semibold text-slate-950 transition hover:bg-slate-100 active:scale-[0.985] disabled:opacity-50">
+                {unlocking ? 'Unlocking…' : 'Unlock PDF'}
+              </button>
+            </form>
+          ) : isRevoked ? (
             <div className="text-center p-8 max-w-md rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 m-4">
               <ShieldAlert className="w-12 h-12 text-red-600 dark:text-red-400 mx-auto mb-3" />
               <h4 className="text-base font-bold text-red-900 dark:text-red-200 mb-1">Access Revoked</h4>
@@ -194,11 +260,13 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
                 <PdfViewer
                   url={contentUrl}
                   title={document.title}
-                  watermarkText={showWatermark ? watermarkText : null}
+                  watermarkText={policy?.watermarkTemplate ? watermarkText : null}
+                  onErrorDismiss={onClose}
+                  onOpenTools={canManage ? () => setShowPdfTools(true) : undefined}
                 />
               ) : isImage ? (
                 <div className="flex-1 min-h-0 w-full flex items-center justify-center p-4 overflow-auto">
-                  <img src={contentUrl} alt={document.title} className="max-h-full max-w-full object-contain rounded-lg shadow-sm" />
+                  <img src={contentUrl} alt={document.title} onError={() => setContentError('Unable to render document')} className="max-h-full max-w-full object-contain rounded-lg shadow-sm" />
                 </div>
               ) : (
                 <div className="flex-1 min-h-0 w-full p-4 overflow-auto">

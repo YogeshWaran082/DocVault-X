@@ -9,12 +9,17 @@ import {
 } from '@docvault/contracts';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import { hashDocumentPassword, verifyDocumentPassword } from '../security/document-password.js';
 
 export const documentRouter = Router();
 
 const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 } // 500 MB max
 });
+
+function canReadDocument(req: AuthenticatedRequest, documentId: string): boolean {
+  return req.user!.role !== 'recipient' || db.hasActiveGrant(documentId, req.user!.id);
+}
 
 documentRouter.use(authenticate);
 
@@ -65,6 +70,10 @@ documentRouter.post(
     if (!title || title.length === 0) {
       return res.status(400).json({ error: 'Document title cannot be empty' });
     }
+    const documentPassword = typeof req.body['password'] === 'string' ? req.body['password'] : null;
+    if (documentPassword && (documentPassword.length < 6 || documentPassword.length > 128)) {
+      return res.status(400).json({ error: 'Document password must be between 6 and 128 characters' });
+    }
 
     const mimeDeclared = req.file.mimetype || 'application/octet-stream';
     const mimeDetected = mimeDeclared; // Can be enhanced with file-type sniffer
@@ -112,7 +121,8 @@ documentRouter.post(
       offlineLeaseSeconds: 3000, // 50 minutes default
       allowExport: false,
       allowPrint: true,
-      watermarkTemplate: null // No watermark by default as requested
+      watermarkTemplate: null, // No watermark by default as requested
+      passwordHash: hashDocumentPassword(documentPassword)
     });
 
     db.recordAuditEvent({
@@ -132,7 +142,7 @@ documentRouter.post(
         sha256Ciphertext
       },
       version,
-      policy
+      policy: { ...policy, passwordHash: undefined, hasPassword: Boolean(policy.passwordHash) }
     });
   }
 );
@@ -144,7 +154,10 @@ documentRouter.get('/', (req: AuthenticatedRequest, res: Response) => {
   const status = req.query['status'] as string | undefined;
   const search = req.query['search'] as string | undefined;
 
-  const docs = db.listDocuments(req.user!.organizationId, { status, search });
+  const docs = db
+    .listDocuments(req.user!.organizationId, { status, search })
+    .filter(doc => canReadDocument(req, doc.id))
+    .map(doc => ({ ...doc, hasPassword: Boolean(db.getActivePolicy(doc.id)?.passwordHash) }));
   return res.json({ documents: docs });
 });
 
@@ -156,15 +169,18 @@ documentRouter.get('/:id', (req: AuthenticatedRequest, res: Response) => {
   if (!doc) {
     return res.status(404).json({ error: 'Document not found' });
   }
+  if (!canReadDocument(req, doc.id)) {
+    return res.status(403).json({ error: 'Access to this document has not been granted' });
+  }
 
   const versions = db.findVersionsByDocument(doc.id);
   const activePolicy = db.getActivePolicy(doc.id);
-  const grants = db.listGrantsByDocument(doc.id);
+  const grants = req.user!.role === 'recipient' ? [] : db.listGrantsByDocument(doc.id);
 
   return res.json({
-    document: doc,
+    document: { ...doc, hasPassword: Boolean(activePolicy?.passwordHash) },
     versions,
-    activePolicy,
+    activePolicy: activePolicy ? { ...activePolicy, passwordHash: undefined, hasPassword: Boolean(activePolicy.passwordHash) } : null,
     grants
   });
 });
@@ -225,18 +241,22 @@ documentRouter.post(
 
     const activePolicy = db.getActivePolicy(doc.id);
     const nextVersion = activePolicy ? activePolicy.version + 1 : 1;
+    const hasField = (field: string) => Object.prototype.hasOwnProperty.call(req.body, field);
 
     const policy = db.createPolicy({
       organizationId: req.user!.organizationId,
       documentId: doc.id,
       version: nextVersion,
-      mode: parse.data.mode,
-      expiresAtUtc: parse.data.expiresAtUtc || null,
-      maxOpens: parse.data.maxOpens || null,
-      offlineLeaseSeconds: parse.data.offlineLeaseSeconds,
-      allowExport: parse.data.allowExport,
-      allowPrint: parse.data.allowPrint,
-      watermarkTemplate: parse.data.watermarkTemplate || null
+      mode: hasField('mode') ? parse.data.mode : activePolicy?.mode || 'SECURE_NATIVE',
+      expiresAtUtc: hasField('expiresAtUtc') ? parse.data.expiresAtUtc || null : activePolicy?.expiresAtUtc || null,
+      maxOpens: hasField('maxOpens') ? parse.data.maxOpens || null : activePolicy?.maxOpens || null,
+      offlineLeaseSeconds: hasField('offlineLeaseSeconds') ? parse.data.offlineLeaseSeconds : activePolicy?.offlineLeaseSeconds || 86400,
+      allowExport: hasField('allowExport') ? parse.data.allowExport : activePolicy?.allowExport || false,
+      allowPrint: hasField('allowPrint') ? parse.data.allowPrint : activePolicy?.allowPrint || false,
+      watermarkTemplate: hasField('watermarkTemplate') ? parse.data.watermarkTemplate || null : activePolicy?.watermarkTemplate || null,
+      passwordHash: parse.data.password === undefined
+        ? activePolicy?.passwordHash || null
+        : hashDocumentPassword(parse.data.password)
     });
 
     db.recordAuditEvent({
@@ -249,7 +269,7 @@ documentRouter.post(
       detailsRedacted: JSON.stringify({ mode: policy.mode, version: policy.version })
     });
 
-    return res.status(201).json({ policy });
+    return res.status(201).json({ policy: { ...policy, passwordHash: undefined, hasPassword: Boolean(policy.passwordHash) } });
   }
 );
 
@@ -355,6 +375,9 @@ documentRouter.post('/:id/protected-download', (req: AuthenticatedRequest, res: 
   if (!doc) {
     return res.status(404).json({ error: 'Document not found' });
   }
+  if (!canReadDocument(req, doc.id)) {
+    return res.status(403).json({ error: 'Access to this document has not been granted' });
+  }
 
   if (doc.status !== 'active') {
     return res.status(403).json({ error: `Cannot download: document is ${doc.status}` });
@@ -402,6 +425,13 @@ documentRouter.post(
         error: 'Export forbidden: Document policy does not allow unprotected export'
       });
     }
+    if (!verifyDocumentPassword(req.body?.password, activePolicy.passwordHash)) {
+      return res.status(423).json({
+        error: req.body?.password ? 'INVALID_DOCUMENT_PASSWORD' : 'DOCUMENT_PASSWORD_REQUIRED',
+        requiresPassword: true,
+        message: req.body?.password ? 'Incorrect document password' : 'A password is required to export this document'
+      });
+    }
 
     const acknowledgeWarning = req.body['acknowledgeUnprotectedExport'] === true;
     if (!acknowledgeWarning) {
@@ -439,7 +469,7 @@ documentRouter.post(
 /**
  * 11. GET /:id/access-events: Access logs
  */
-documentRouter.get('/:id/access-events', (req: AuthenticatedRequest, res: Response) => {
+documentRouter.get('/:id/access-events', requireRole(['owner', 'admin', 'sender', 'auditor']), (req: AuthenticatedRequest, res: Response) => {
   const doc = db.findDocumentById(req.user!.organizationId, req.params['id']!);
   if (!doc) {
     return res.status(404).json({ error: 'Document not found' });
@@ -457,9 +487,21 @@ documentRouter.post('/:id/view-content', (req: AuthenticatedRequest, res: Respon
   if (!doc) {
     return res.status(404).json({ error: 'Document not found' });
   }
+  if (!canReadDocument(req, doc.id)) {
+    return res.status(403).json({ error: 'Access to this document has not been granted' });
+  }
 
   if (doc.status !== 'active') {
     return res.status(403).json({ error: `Cannot view: document is ${doc.status}` });
+  }
+
+  const activePolicy = db.getActivePolicy(doc.id);
+  if (!verifyDocumentPassword(req.body?.password, activePolicy?.passwordHash)) {
+    return res.status(423).json({
+      error: req.body?.password ? 'INVALID_DOCUMENT_PASSWORD' : 'DOCUMENT_PASSWORD_REQUIRED',
+      requiresPassword: true,
+      message: req.body?.password ? 'Incorrect document password' : 'A password is required to open this document'
+    });
   }
 
   const versions = db.findVersionsByDocument(doc.id);

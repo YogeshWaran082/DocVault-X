@@ -12,8 +12,10 @@ import { LandingPage } from './components/landing/LandingPage';
 import { ApiClient } from './api/client';
 import { User, Organization, Document, Policy } from './types';
 import { Shield, BookOpen, Terminal, ArrowLeft } from 'lucide-react';
+import { ThemeProvider, useTheme } from './theme/ThemeContext';
 
-export function App() {
+function AppContent() {
+  const { isDark: darkMode, toggleTheme } = useTheme();
   const [shareToken, setShareToken] = useState<string | null>(() => {
     const hash = window.location.hash;
     if (hash.startsWith('#/share/')) {
@@ -23,11 +25,14 @@ export function App() {
     return urlParams.get('share');
   });
 
-  const [route, setRoute] = useState<'landing' | 'admin' | 'dashboard'>(() => {
+  const [route, setRoute] = useState<'landing' | 'dashboard'>(() => {
     const hash = window.location.hash;
-    if (hash === '#/admin' || hash === '#/auth') return 'admin';
     if (hash === '#/dashboard' || hash === '#/app') return 'dashboard';
     return 'landing';
+  });
+  const [isLoginOpen, setIsLoginOpen] = useState(() => {
+    const hash = window.location.hash;
+    return hash === '#/admin' || hash === '#/auth';
   });
 
   const [user, setUser] = useState<User | null>(null);
@@ -38,7 +43,6 @@ export function App() {
   const [isDvxModalOpen, setIsDvxModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
   const [previewPolicy, setPreviewPolicy] = useState<Policy | null>(null);
-  const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Listen to hash changes (e.g. clicking share links, dvx, admin or landing)
@@ -51,10 +55,12 @@ export function App() {
         setIsDvxModalOpen(true);
         setShareToken(null);
       } else if (hash === '#/admin' || hash === '#/auth') {
-        setRoute('admin');
+        setRoute('landing');
+        setIsLoginOpen(true);
         setShareToken(null);
       } else if (hash === '#/dashboard' || hash === '#/app') {
         setRoute('dashboard');
+        if (!ApiClient.getToken()) setIsLoginOpen(true);
         setShareToken(null);
       } else if (
         hash === '' ||
@@ -63,10 +69,10 @@ export function App() {
         hash.startsWith('#formats') ||
         hash.startsWith('#security') ||
         hash.startsWith('#how-it-works') ||
-        hash.startsWith('#downloads') ||
         hash.startsWith('#faq')
       ) {
         setRoute('landing');
+        setIsLoginOpen(false);
         setShareToken(null);
       }
     };
@@ -74,47 +80,26 @@ export function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Toggle theme
-  useEffect(() => {
-    if (darkMode) {
-      window.document.documentElement.classList.add('dark');
-    } else {
-      window.document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
-
   // Load session
-  const loadSession = async () => {
+  const loadSession = async (): Promise<boolean> => {
     try {
       const token = ApiClient.getToken();
       if (!token) {
         setUser(null);
         setLoading(false);
-        return;
+        return false;
       }
-      try {
-        const data = await ApiClient.getMe();
-        setUser(data.user);
-        setOrganization(data.currentOrganization);
-        await loadDocuments();
-      } catch {
-        // Fallback for demo session if API backend is offline locally
-        setUser({
-          id: 'usr_demo_admin',
-          email: 'admin@docvault-demo.com',
-          name: 'Security Executive',
-          mfaEnabled: true,
-        });
-        setOrganization({
-          id: 'org_defense_labs',
-          name: 'Global Defense Labs',
-          role: 'owner',
-        });
-        await loadDocuments();
-      }
+      const data = await ApiClient.getMe();
+      setUser(data.user);
+      setOrganization(data.currentOrganization);
+      await loadDocuments();
+      return true;
     } catch {
       ApiClient.setToken(null);
       setUser(null);
+      setOrganization(null);
+      setDocuments([]);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -125,50 +110,25 @@ export function App() {
       const data = await ApiClient.listDocuments();
       setDocuments(data.documents);
     } catch {
-      // Fallback demo documents so app dashboard is immediately interactive
-      setDocuments([
-        {
-          id: 'doc_1',
-          organizationId: 'org_defense_labs',
-          ownerUserId: 'usr_demo_admin',
-          title: 'StripesShop_Sales_Invoice_9000000001.pdf',
-          mimeDeclared: 'application/pdf',
-          mimeDetected: 'application/pdf',
-          sizeBytes: 162370,
-          sha256Ciphertext: '7f9e2a...c041',
-          status: 'active',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'doc_2',
-          organizationId: 'org_defense_labs',
-          ownerUserId: 'usr_demo_admin',
-          title: 'DocVaultX_Enterprise_Security_Architecture_v2.4.pdf',
-          mimeDeclared: 'application/pdf',
-          mimeDetected: 'application/pdf',
-          sizeBytes: 2450000,
-          sha256Ciphertext: '4a8b19...99f2',
-          status: 'active',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'doc_3',
-          organizationId: 'org_defense_labs',
-          ownerUserId: 'usr_demo_admin',
-          title: 'Confidential_Audit_Report.dvx',
-          mimeDeclared: 'application/octet-stream',
-          mimeDetected: 'application/x-dvx',
-          sizeBytes: 5120000,
-          sha256Ciphertext: '9c1288...44d1',
-          status: 'active',
-          createdAt: new Date().toISOString(),
-        }
-      ]);
+      setDocuments([]);
     }
   };
 
   useEffect(() => {
     loadSession();
+  }, []);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      setOrganization(null);
+      setDocuments([]);
+      setRoute('landing');
+      setIsLoginOpen(true);
+      window.location.hash = '#/auth';
+    };
+    window.addEventListener('docvault:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('docvault:unauthorized', handleUnauthorized);
   }, []);
 
   const handleOpenPreview = async (doc: Document) => {
@@ -188,6 +148,7 @@ export function App() {
     setOrganization(null);
     setDocuments([]);
     setRoute('landing');
+    setIsLoginOpen(false);
     window.location.hash = '';
   };
 
@@ -196,9 +157,17 @@ export function App() {
     window.location.hash = '';
   };
 
-  const handleGoToAdmin = () => {
-    setRoute('admin');
-    window.location.hash = '#/admin';
+  const handleOpenLogin = () => {
+    setIsLoginOpen(true);
+    window.location.hash = '#/auth';
+  };
+
+  const handleAuthenticated = async () => {
+    const authenticated = await loadSession();
+    if (!authenticated) return;
+    setIsLoginOpen(false);
+    setRoute('dashboard');
+    window.location.hash = '#/dashboard';
   };
 
   if (shareToken) {
@@ -207,7 +176,7 @@ export function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0A1222] text-slate-400">
+      <div className="min-h-screen flex items-center justify-center bg-[#f5f5f7] text-slate-500 dark:bg-[#0A1222] dark:text-slate-400">
         <div className="text-center space-y-3">
           <div className="w-10 h-10 border-2 border-[#2DD4BF] border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-xs font-mono font-medium">Initializing DocVault X Cryptographic Engine...</p>
@@ -221,10 +190,19 @@ export function App() {
     return (
       <>
         <LandingPage
-          onNavigateToAdmin={handleGoToAdmin}
+          onOpenLogin={handleOpenLogin}
+          onOpenDashboard={() => {
+            setRoute('dashboard');
+            window.location.hash = '#/dashboard';
+          }}
           onOpenDvx={() => setIsDvxModalOpen(true)}
           isAuthenticated={Boolean(user && organization)}
         />
+
+        <AuthScreen isOpen={isLoginOpen} onAuthenticated={handleAuthenticated} onClose={() => {
+          setIsLoginOpen(false);
+          window.location.hash = '';
+        }} />
 
         {/* DVX Container Inspector Modal accessible from landing */}
         <DvxViewerModal
@@ -240,32 +218,18 @@ export function App() {
     );
   }
 
-  // View 2: Admin Authentication Screen (Triggered by 3-click Facebook or Admin button)
-  if (route === 'admin' && (!user || !organization)) {
-    return (
-      <AuthScreen
-        onAuthenticated={async () => {
-          await loadSession();
-          setRoute('dashboard');
-          window.location.hash = '#/dashboard';
-        }}
-        onBackToLanding={handleGoToLanding}
-        isAdminMode={true}
-      />
-    );
-  }
-
-  // If user navigated to dashboard but not authenticated, show AuthScreen with back link
+  // Protected dashboard route: unauthenticated visitors stay on the landing page with sign-in open.
   if (!user || !organization) {
     return (
-      <AuthScreen
-        onAuthenticated={async () => {
-          await loadSession();
-          setRoute('dashboard');
-          window.location.hash = '#/dashboard';
-        }}
-        onBackToLanding={handleGoToLanding}
-      />
+      <>
+        <LandingPage
+          onOpenLogin={handleOpenLogin}
+          onOpenDashboard={handleOpenLogin}
+          onOpenDvx={() => setIsDvxModalOpen(true)}
+          isAuthenticated={false}
+        />
+        <AuthScreen isOpen onAuthenticated={handleAuthenticated} onClose={handleGoToLanding} />
+      </>
     );
   }
 
@@ -277,7 +241,7 @@ export function App() {
         user={user}
         organization={organization}
         darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode(!darkMode)}
+        onToggleDarkMode={toggleTheme}
         onOpenUpload={() => setIsUploadOpen(true)}
         onOpenDvx={() => setIsDvxModalOpen(true)}
         onLogout={handleLogout}
@@ -304,17 +268,19 @@ export function App() {
               <span>Vault Documents</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('audit')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'audit'
-                  ? 'bg-brand-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Terminal className="w-4 h-4" />
-              <span>Security Audit Trail</span>
-            </button>
+            {['owner', 'admin', 'auditor'].includes(organization.role) && (
+              <button
+                onClick={() => setActiveTab('audit')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  activeTab === 'audit'
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Terminal className="w-4 h-4" />
+                <span>Security Audit Trail</span>
+              </button>
+            )}
 
             <button
               onClick={() => setActiveTab('docs')}
@@ -344,6 +310,7 @@ export function App() {
           <DocumentList
             documents={documents}
             user={user}
+            role={organization.role}
             onRefresh={loadDocuments}
             onPreview={handleOpenPreview}
           />
@@ -412,8 +379,19 @@ export function App() {
         document={previewDoc}
         policy={previewPolicy}
         user={user}
+        documents={documents}
+        canManage={['owner', 'admin', 'sender'].includes(organization.role)}
+        onDocumentsChanged={loadDocuments}
         onClose={() => setPreviewDoc(null)}
       />
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }

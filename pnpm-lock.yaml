@@ -8,18 +8,6 @@ importers:
 
   .:
     devDependencies:
-      '@capacitor/android':
-        specifier: ^6.2.3
-        version: 6.2.3(@capacitor/core@6.2.3)
-      '@capacitor/cli':
-        specifier: ^6.2.3
-        version: 6.2.3
-      '@capacitor/core':
-        specifier: ^6.2.3
-        version: 6.2.3
-      '@capacitor/ios':
-        specifier: ^6.2.3
-        version: 6.2.3(@capacitor/core@6.2.3)
       typescript:
         specifier: ^5.4.5
         version: 5.9.3

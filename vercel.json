@@ -4,6 +4,10 @@
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
+      "source": "/health/:check(live|ready)",
+      "destination": "/api"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api"
     },

@@ -1,5 +1,19 @@
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '/api/v1';
 
+export class DrmError extends Error {
+  public reason: string;
+  public code: string;
+  public status: number;
+
+  constructor(message: string, reason: string, code: string, status: number) {
+    super(message);
+    this.name = 'DrmError';
+    this.reason = reason;
+    this.code = code;
+    this.status = status;
+  }
+}
+
 export class ApiClient {
   private static token: string | null = localStorage.getItem('docvault_token');
 
@@ -194,56 +208,165 @@ export class ApiClient {
     }>('/audit/metrics');
   }
 
-  static async initReceiverSession(token: string) {
-    const url = `${API_BASE}/shares/${token}/session`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `Failed to open document (${res.status})`);
+  static async initReceiverSession(token: string, resumeSessionToken?: string | null) {
+    // Try primary DRM engine endpoint first, falling back to /shares/:token/session
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (resumeSessionToken) {
+      headers['x-session-token'] = resumeSessionToken;
     }
+
+    let res = await fetch(`${API_BASE}/drm/open`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ token, sessionToken: resumeSessionToken || undefined })
+    });
+
+    if (!res.ok && res.status === 404) {
+      res = await fetch(`${API_BASE}/shares/${token}/session`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ sessionToken: resumeSessionToken || undefined })
+      });
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({
+        error: 'Unable to Open Document',
+        reason: 'Invalid or Unauthorized Link',
+        code: 'ERROR'
+      }));
+
+      throw new DrmError(
+        err.error || 'Unable to Open Document',
+        err.reason || err.error || 'Invalid or Unauthorized Link',
+        err.code || (res.status === 410 ? 'EXPIRED' : res.status === 403 ? 'ACCESS_REVOKED' : 'ERROR'),
+        res.status
+      );
+    }
+
     return res.json() as Promise<{
       sessionId: string;
       sessionToken: string;
+      isResumed?: boolean;
       documentTitle: string;
       mimeType: string;
       expiresAt: string;
       remainingSeconds: number;
+      openCount: number;
+      maxOpens: number | null;
+      remainingOpens?: number | null;
       watermarkTemplate: string | null;
       allowDownload: boolean;
+      singleSessionOnly?: boolean;
     }>;
   }
 
-  static async checkViewerSessionStatus(sessionId: string) {
-    const url = `${API_BASE}/viewer/sessions/${sessionId}/status`;
-    const res = await fetch(url, {
-      headers: { 'Cache-Control': 'no-store' }
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `Session check failed (${res.status})`);
+  static async checkViewerSessionStatus(sessionId: string, sessionToken?: string | null) {
+    const headers: Record<string, string> = { 'Cache-Control': 'no-store' };
+    if (sessionToken) {
+      headers['x-session-token'] = sessionToken;
     }
+
+    let res = await fetch(`${API_BASE}/drm/sessions/${sessionId}/validate`, { headers });
+    if (!res.ok && res.status === 404) {
+      res = await fetch(`${API_BASE}/viewer/sessions/${sessionId}/status`, { headers });
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({
+        error: 'Unable to Open Document',
+        reason: 'Session expired or revoked',
+        code: 'ERROR'
+      }));
+
+      throw new DrmError(
+        err.error || 'Unable to Open Document',
+        err.reason || 'Session expired or revoked',
+        err.code || (res.status === 410 ? 'EXPIRED' : 'ACCESS_REVOKED'),
+        res.status
+      );
+    }
+
     return res.json() as Promise<{
       active: boolean;
       expiresAt: string;
       remainingSeconds: number;
       openCount: number;
       maxOpens: number | null;
+      remainingOpens?: number | null;
+      serverTimeUtc?: string;
     }>;
   }
 
-  static async fetchReceiverContent(sessionId: string): Promise<Blob> {
-    const url = `${API_BASE}/viewer/sessions/${sessionId}/content`;
-    const res = await fetch(url, {
-      headers: { 'Cache-Control': 'no-store' }
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `Content request denied (${res.status})`);
+  static async fetchReceiverContent(sessionId: string, sessionToken?: string | null): Promise<Blob> {
+    const headers: Record<string, string> = { 'Cache-Control': 'no-store' };
+    if (sessionToken) {
+      headers['x-session-token'] = sessionToken;
     }
+
+    let res = await fetch(`${API_BASE}/drm/sessions/${sessionId}/content`, { headers });
+    if (!res.ok && res.status === 404) {
+      res = await fetch(`${API_BASE}/viewer/sessions/${sessionId}/content`, { headers });
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({
+        error: 'Unable to Open Document',
+        reason: 'Content request denied',
+        code: 'ERROR'
+      }));
+
+      throw new DrmError(
+        err.error || 'Unable to Open Document',
+        err.reason || 'Content request denied',
+        err.code || (res.status === 410 ? 'EXPIRED' : 'ACCESS_REVOKED'),
+        res.status
+      );
+    }
+
     return res.blob();
+  }
+
+  static async getShareStats(shareId: string) {
+    return this.request<{
+      stats: {
+        shareId: string;
+        documentId: string;
+        documentTitle: string;
+        expiryType: string;
+        durationSeconds: number;
+        firstOpenedAt: string | null;
+        expiresAt: string;
+        maxOpens: number | null;
+        openCount: number;
+        remainingOpens: number | null;
+        isExpired: boolean;
+        isRevoked: boolean;
+        activeSessionsCount: number;
+        singleSessionOnly: boolean;
+        watermarkTemplate: string | null;
+        createdAt: string;
+      };
+    }>(`/drm/shares/${shareId}/stats`);
+  }
+
+  static async validateLicense(params: {
+    licenseJti: string;
+    deviceId?: string;
+    currentClientTimeUtc?: string;
+  }) {
+    return this.request<{
+      isValid: boolean;
+      reason?: string;
+      isExpired: boolean;
+      isRevoked: boolean;
+      remainingSeconds?: number;
+      effectiveDeadlineUtc?: string;
+    }>('/drm/licenses/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
   }
 
   static async inspectDvx(file: File) {
@@ -295,11 +418,13 @@ export class ApiClient {
     }>;
   }
 
-  static async checkDvxSessionStatus(sessionId: string) {
+  static async checkDvxSessionStatus(sessionId: string, sessionToken?: string | null) {
+    const headers: Record<string, string> = { 'Cache-Control': 'no-store' };
+    if (sessionToken) {
+      headers['x-session-token'] = sessionToken;
+    }
     const url = `${API_BASE}/dvx/sessions/${sessionId}/status`;
-    const res = await fetch(url, {
-      headers: { 'Cache-Control': 'no-store' }
-    });
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || `Session status check failed (${res.status})`);
@@ -311,11 +436,13 @@ export class ApiClient {
     }>;
   }
 
-  static async fetchDvxContent(sessionId: string): Promise<Blob> {
+  static async fetchDvxContent(sessionId: string, sessionToken?: string | null): Promise<Blob> {
+    const headers: Record<string, string> = { 'Cache-Control': 'no-store' };
+    if (sessionToken) {
+      headers['x-session-token'] = sessionToken;
+    }
     const url = `${API_BASE}/dvx/preview/${sessionId}`;
-    const res = await fetch(url, {
-      headers: { 'Cache-Control': 'no-store' }
-    });
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || `Failed to fetch DVX content (${res.status})`);
@@ -344,5 +471,125 @@ export class ApiClient {
     link.download = filename;
     link.click();
     URL.revokeObjectURL(link.href);
+  }
+
+  static async exportPasswordProtectedPdf(
+    documentId: string,
+    options: {
+      passwordMode: 'custom' | 'random';
+      userPassword?: string;
+      ownerPasswordMode: 'custom' | 'random';
+      ownerPassword?: string;
+      permissions: {
+        allowPrinting: boolean;
+        allowCopying: boolean;
+        allowModifying: boolean;
+      };
+      enablePasswordRetrieval: boolean;
+      retrievalExpirySeconds?: number;
+      maxRetrievals?: number | null;
+    }
+  ) {
+    return this.request<{
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      algorithm: 'AES-256';
+      permissions: {
+        allowPrinting: boolean;
+        allowCopying: boolean;
+        allowModifying: boolean;
+      };
+      userPassword: string;
+      ownerPasswordGenerated: boolean;
+      pdfBase64: string;
+      retrieval: {
+        id: string;
+        token: string;
+        expiresAt: string;
+        maxRetrievals: number | null;
+      } | null;
+    }>(`/documents/${documentId}/password-pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    });
+  }
+
+  static async listPdfPasswordRecords(documentId: string) {
+    return this.request<{
+      records: Array<{
+        id: string;
+        documentId: string;
+        expiresAt: string;
+        maxRetrievals: number | null;
+        retrievalCount: number;
+        revokedAt: string | null;
+        createdAt: string;
+        permissions: {
+          allowPrinting: boolean;
+          allowCopying: boolean;
+          allowModifying: boolean;
+        };
+      }>;
+    }>(`/documents/${documentId}/pdf-passwords`);
+  }
+
+  static async revokePdfPasswordRecord(recordId: string) {
+    return this.request<{ success: boolean; message: string }>(`/pdf-passwords/${recordId}/revoke`, {
+      method: 'POST'
+    });
+  }
+
+  static async getPdfPasswordStatus(token: string) {
+    const res = await fetch(`${API_BASE}/pdf-passwords/${encodeURIComponent(token)}/status`, {
+      headers: { 'Cache-Control': 'no-store' }
+    });
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    if (!res.ok) {
+      throw new Error(data.error || `Status check failed (${res.status})`);
+    }
+    return data as {
+      active: boolean;
+      documentTitle: string;
+      expiresAt: string;
+      maxRetrievals: number | null;
+      retrievalCount: number;
+      remainingRetrievals: number | null;
+      isExpired: boolean;
+      isRevoked: boolean;
+      maxReached: boolean;
+      permissions: {
+        allowPrinting: boolean;
+        allowCopying: boolean;
+        allowModifying: boolean;
+      };
+      notice: string;
+    };
+  }
+
+  static async retrievePdfPassword(token: string) {
+    const res = await fetch(`${API_BASE}/pdf-passwords/${encodeURIComponent(token)}/retrieve`, {
+      method: 'POST',
+      headers: { 'Cache-Control': 'no-store' }
+    });
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    if (!res.ok) {
+      throw new Error(data.error || `Password retrieval failed (${res.status})`);
+    }
+    return data as {
+      password: string;
+      documentTitle: string;
+      expiresAt: string;
+      maxRetrievals: number | null;
+      retrievalCount: number;
+      remainingRetrievals: number | null;
+      permissions: {
+        allowPrinting: boolean;
+        allowCopying: boolean;
+        allowModifying: boolean;
+      };
+      notice: string;
+    };
   }
 }

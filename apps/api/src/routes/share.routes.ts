@@ -195,7 +195,21 @@ shareRouter.post('/:id/regenerate', authenticate, (req: AuthenticatedRequest, re
 });
 
 /**
+ * 2d. GET /shares/:id/stats: Sender retrieves DRM access statistics
+ */
+shareRouter.get('/:id/stats', authenticate, (req: AuthenticatedRequest, res: Response) => {
+  const share = db.findShareLinkById(req.params['id']!);
+  if (!share || share.organizationId !== req.user!.organizationId) {
+    return res.status(404).json({ error: 'Share link not found' });
+  }
+
+  const stats = db.getShareStats(share.id);
+  return res.json({ stats });
+});
+
+/**
  * 3. POST /shares/:token/session: Receiver opens share link without an account
+ * Atomically checks expiry, max opens, revocation, single-session, or resumes active session.
  */
 shareRouter.post('/:token/session', (req: Request, res: Response) => {
   const token = req.params['token']!;
@@ -205,145 +219,94 @@ shareRouter.post('/:token/session', (req: Request, res: Response) => {
   const ipHash = crypto.createHash('sha256').update(ip).digest('hex').substring(0, 16);
   const userAgent = req.headers['user-agent'] || null;
 
-  const share = db.findShareLinkByTokenHash(tokenHash);
-  if (!share) {
-    return res.status(404).json({ error: 'Invalid or expired document link' });
-  }
+  const resumeSessionToken = (req.headers['x-session-token'] as string | undefined) || req.body?.sessionToken;
 
-  const doc = db.findDocumentById(share.organizationId, share.documentId) ||
-    ((db as any).state?.documents || []).find((d: any) => d.id === share.documentId);
-
-  if (!doc) {
-    return res.status(404).json({ error: 'Document is no longer available' });
-  }
-
-  // 1. Check revocation
-  if (share.revokedAt) {
-    db.recordSecurityAlert({
-      organizationId: share.organizationId,
-      documentId: doc.id,
-      shareLinkId: share.id,
-      severity: 'medium',
-      alertType: 'REVOKED_ACCESS_ATTEMPT',
-      message: `Attempted access on revoked share link from IP ${ipHash}`,
-      ipHash,
-      userAgent
-    });
-    return res.status(403).json({ error: 'Access revoked: Document owner has disabled this share link' });
-  }
-
-  // 2. Check authoritative server clock expiry (even after refresh or reopening!)
-  const now = new Date();
-  if (now.getTime() >= new Date(share.expiresAt).getTime()) {
-    db.recordSecurityAlert({
-      organizationId: share.organizationId,
-      documentId: doc.id,
-      shareLinkId: share.id,
-      severity: 'low',
-      alertType: 'EXPIRED_ACCESS_ATTEMPT',
-      message: `Attempted access after expiration on share link from IP ${ipHash}`,
-      ipHash,
-      userAgent
-    });
-    return res.status(410).json({ error: 'Document expired: Access duration has ended' });
-  }
-
-  // 2b. If first-open expiry semantics, establish the single authoritative expiry timestamp on the first successful open
-  if (share.expiryType === 'FIRST_OPEN' && !share.firstOpenedAt) {
-    const authoritativeExpiresAt = new Date(now.getTime() + share.durationSeconds * 1000).toISOString();
-    db.markShareLinkFirstOpened(share.id, authoritativeExpiresAt);
-    share.expiresAt = authoritativeExpiresAt;
-    share.firstOpenedAt = now.toISOString();
-  }
-
-  // 3. Check maximum views / opens limit
-  if (share.maxOpens !== null && share.openCount >= share.maxOpens) {
-    db.recordSecurityAlert({
-      organizationId: share.organizationId,
-      documentId: doc.id,
-      shareLinkId: share.id,
-      severity: 'medium',
-      alertType: 'MAX_OPENS_EXCEEDED',
-      message: `Maximum allowed views (${share.maxOpens}) exceeded for share link from IP ${ipHash}`,
-      ipHash,
-      userAgent
-    });
-    return res.status(403).json({ error: 'Maximum views exceeded for this share link' });
-  }
-
-  // 4. Single-session / Concurrent session restriction
-  if (share.singleSessionOnly) {
-    const activeSessions = db.getActiveSessionsForShare(share.id);
-    if (activeSessions.length > 0) {
-      db.recordSecurityAlert({
-        organizationId: share.organizationId,
-        documentId: doc.id,
-        shareLinkId: share.id,
-        severity: 'high',
-        alertType: 'CONCURRENT_SESSION_BLOCKED',
-        message: `Blocked concurrent session attempt from IP ${ipHash}. Document has singleSessionOnly policy and is already active.`,
-        ipHash,
-        userAgent
-      });
-      return res.status(409).json({
-        error: 'Single-session policy active: This document is already open in another active browser session or was forwarded. Concurrent viewing is restricted.'
-      });
-    }
-  }
-
-  // 5. Forwarded link detection
-  if (share.boundIpHash && share.boundIpHash !== ipHash) {
-    db.recordSecurityAlert({
-      organizationId: share.organizationId,
-      documentId: doc.id,
-      shareLinkId: share.id,
-      severity: 'medium',
-      alertType: 'FORWARDED_LINK_DETECTED',
-      message: `Share link opened from new IP ${ipHash} (originally opened by ${share.boundIpHash}). Potential link forwarding detected.`,
-      ipHash,
-      userAgent
-    });
-  } else if (!share.boundIpHash) {
-    share.boundIpHash = ipHash;
-  }
-
-  // Atomically increment open count
-  db.incrementShareLinkOpenCount(share.id);
-
-  // Generate 256-bit session token
-  const rawSessionToken = crypto.randomBytes(32).toString('base64url');
-  const sessionTokenHash = crypto.createHash('sha256').update(rawSessionToken).digest('hex');
-
-  const session = db.createAccessSession({
-    shareLinkId: share.id,
-    documentId: doc.id,
-    sessionTokenHash,
+  const result = db.atomicallyOpenShare(tokenHash, {
     ipHash,
     userAgent,
-    expiresAt: share.expiresAt
+    resumeSessionToken
   });
 
-  db.recordAccessEvent({
-    organizationId: share.organizationId,
-    documentId: doc.id,
-    userId: null,
-    deviceId: null,
-    eventType: 'receiver_session_started',
-    offlineReported: false,
-    metadataRedacted: JSON.stringify({ shareId: share.id, ipHash, singleSession: share.singleSessionOnly })
-  });
+  if (result.outcome === 'DENIED') {
+    if (result.reason === 'EXPIRED') {
+      return res.status(410).json({
+        error: 'Unable to Open Document',
+        reason: 'Document Expired',
+        code: 'EXPIRED',
+        expiredAt: result.share?.expiresAt
+      });
+    }
 
-  const remainingSeconds = Math.max(0, Math.floor((new Date(share.expiresAt).getTime() - now.getTime()) / 1000));
+    if (result.reason === 'MAX_OPENS_REACHED') {
+      return res.status(403).json({
+        error: 'Unable to Open Document: Maximum views exceeded for this share link',
+        reason: 'Maximum Open Count Reached',
+        code: 'MAX_OPENS_REACHED',
+        maxOpens: result.share?.maxOpens,
+        openCount: result.share?.openCount
+      });
+    }
 
-  return res.status(201).json({
-    sessionId: session.id,
+    if (result.reason === 'ACCESS_REVOKED') {
+      return res.status(403).json({
+        error: 'Unable to Open Document: Access revoked: Document owner has disabled this share link',
+        reason: 'Access Revoked',
+        code: 'ACCESS_REVOKED'
+      });
+    }
+
+    if (result.reason === 'SINGLE_SESSION_CONFLICT') {
+      return res.status(409).json({
+        error: 'Unable to Open Document: Single-session policy active: This document is already open in another active browser session or was forwarded. Concurrent viewing is restricted.',
+        reason: 'Maximum Open Count Reached',
+        code: 'SINGLE_SESSION_CONFLICT'
+      });
+    }
+
+    return res.status(404).json({
+      error: 'Unable to Open Document',
+      reason: 'Invalid or Unauthorized Link',
+      code: 'INVALID_LINK'
+    });
+  }
+
+  const { session, rawSessionToken, share, document: doc } = result;
+  const isResumed = result.outcome === 'RESUMED';
+
+  if (!isResumed) {
+    db.recordAccessEvent({
+      organizationId: share!.organizationId,
+      documentId: doc!.id,
+      userId: null,
+      deviceId: null,
+      eventType: 'receiver_session_started',
+      offlineReported: false,
+      metadataRedacted: JSON.stringify({
+        shareId: share!.id,
+        ipHash,
+        openCount: share!.openCount,
+        maxOpens: share!.maxOpens
+      })
+    });
+  }
+
+  const now = Date.now();
+  const remainingSeconds = Math.max(0, Math.floor((new Date(session!.expiresAt).getTime() - now) / 1000));
+  const remainingOpens = share!.maxOpens !== null ? Math.max(0, share!.maxOpens - share!.openCount) : null;
+
+  return res.status(isResumed ? 200 : 201).json({
+    sessionId: session!.id,
     sessionToken: rawSessionToken,
-    documentTitle: doc.title,
-    mimeType: doc.mimeDetected,
-    expiresAt: share.expiresAt,
+    isResumed,
+    documentTitle: doc!.title,
+    mimeType: doc!.mimeDetected,
+    expiresAt: session!.expiresAt,
     remainingSeconds,
-    watermarkTemplate: share.watermarkTemplate,
-    allowDownload: false, // In view-only mode, download is always disabled for receiver
-    singleSessionOnly: share.singleSessionOnly
+    openCount: share!.openCount,
+    maxOpens: share!.maxOpens,
+    remainingOpens,
+    watermarkTemplate: share!.watermarkTemplate,
+    allowDownload: false,
+    singleSessionOnly: share!.singleSessionOnly
   });
 });

@@ -102,6 +102,36 @@ export class EncryptedVaultStorage {
   }
 
   /**
+   * Encrypts a UTF-8 secret (e.g. a PDF opening password) at rest using AES-256-GCM
+   * keyed by the vault master KMS key.
+   */
+  public encryptSecret(plaintext: string): string {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.masterKmsKey, iv);
+    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return `${iv.toString('base64url')}.${authTag.toString('base64url')}.${encrypted.toString('base64url')}`;
+  }
+
+  /**
+   * Decrypts a UTF-8 secret previously encrypted with encryptSecret().
+   */
+  public decryptSecret(ciphertext: string): string {
+    const parts = ciphertext.split('.');
+    if (parts.length !== 3) {
+      throw new Error('Invalid encrypted secret format');
+    }
+    const [ivB64, tagB64, dataB64] = parts as [string, string, string];
+    const iv = Buffer.from(ivB64, 'base64url');
+    const authTag = Buffer.from(tagB64, 'base64url');
+    const data = Buffer.from(dataB64, 'base64url');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', this.masterKmsKey, iv);
+    decipher.setAuthTag(authTag);
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+    return decrypted.toString('utf8');
+  }
+
+  /**
    * Securely deletes the ciphertext from storage.
    */
   public deleteObject(objectKey: string): void {

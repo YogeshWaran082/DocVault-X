@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Moon, Sun, LogOut, Building, Plus, FileBox } from 'lucide-react';
+import { ShieldCheck, Moon, Sun, LogOut, Building, Plus } from 'lucide-react';
 import { User, Organization } from '../types';
 
 interface NavbarProps {
@@ -8,7 +8,6 @@ interface NavbarProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
   onOpenUpload: () => void;
-  onOpenDvx: () => void;
   onLogout: () => void;
   onGoToLanding?: () => void;
 }
@@ -19,7 +18,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   darkMode,
   onToggleDarkMode,
   onOpenUpload,
-  onOpenDvx,
   onLogout,
   onGoToLanding
 }) => {
@@ -58,16 +56,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               {organization.role}
             </span>
           </div>
-
-          {/* Open DVX File Button */}
-          <button
-            onClick={onOpenDvx}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-brand-500 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 font-medium text-xs sm:text-sm shadow-xs transition active:scale-95"
-            title="Open an encrypted .dvx container file from your disk"
-          >
-            <FileBox className="w-4 h-4 text-brand-600 dark:text-brand-400" />
-            <span className="hidden xs:inline">Open .dvx File</span>
-          </button>
 
           {/* Upload Button */}
           <button

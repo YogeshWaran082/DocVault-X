@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as crypto from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface DbUser {
@@ -206,6 +207,24 @@ export interface DbKeyVersion {
   retiredAt: string | null;
 }
 
+export interface DbPdfPasswordRecord {
+  id: string;
+  organizationId: string;
+  documentId: string;
+  tokenHash: string;
+  encryptedUserPassword: string;
+  expiresAt: string;
+  maxRetrievals: number | null;
+  retrievalCount: number;
+  revokedAt: string | null;
+  createdAt: string;
+  permissions: {
+    allowPrinting: boolean;
+    allowCopying: boolean;
+    allowModifying: boolean;
+  };
+}
+
 export interface DatabaseState {
   organizations: DbOrganization[];
   users: DbUser[];
@@ -224,6 +243,7 @@ export interface DatabaseState {
   deletionJobs: DbDeletionJob[];
   auditEvents: DbAuditEvent[];
   keyVersions: DbKeyVersion[];
+  pdfPasswordRecords?: DbPdfPasswordRecord[];
 }
 
 function getDataDirectory(): string {
@@ -296,7 +316,8 @@ export class Database {
       conversionJobs: [],
       deletionJobs: [],
       auditEvents: [],
-      keyVersions: []
+      keyVersions: [],
+      pdfPasswordRecords: []
     };
   }
 
@@ -330,7 +351,8 @@ export class Database {
       conversionJobs: [],
       deletionJobs: [],
       auditEvents: [],
-      keyVersions: []
+      keyVersions: [],
+      pdfPasswordRecords: []
     };
     this.persist();
   }
@@ -617,6 +639,305 @@ export class Database {
     return undefined;
   }
 
+  /**
+   * Atomic DRM open verification and slot acquisition.
+   * Prevents race conditions and guarantees that concurrent opens cannot bypass maxOpens.
+   * If a valid session resume token is provided, resumes without consuming open count.
+   */
+  public atomicallyOpenShare(
+    tokenHash: string,
+    clientInfo: {
+      ipHash: string;
+      userAgent: string | null;
+      resumeSessionToken?: string;
+    }
+  ): {
+    outcome: 'GRANTED' | 'RESUMED' | 'DENIED';
+    reason?: 'EXPIRED' | 'MAX_OPENS_REACHED' | 'ACCESS_REVOKED' | 'INVALID_LINK' | 'SINGLE_SESSION_CONFLICT';
+    message?: string;
+    session?: DbAccessSession;
+    rawSessionToken?: string;
+    share?: DbShareLink;
+    document?: DbDocument;
+  } {
+    const share = this.findShareLinkByTokenHash(tokenHash);
+    if (!share) {
+      return { outcome: 'DENIED', reason: 'INVALID_LINK', message: 'Invalid or Unauthorized Link' };
+    }
+
+    const doc = this.state.documents.find(d => d.id === share.documentId && d.status !== 'deleted');
+    if (!doc) {
+      return { outcome: 'DENIED', reason: 'INVALID_LINK', message: 'Document is no longer available' };
+    }
+
+    // 1. Revocation checks (Document or Share Link)
+    if (doc.status === 'revoked') {
+      this.recordSecurityAlert({
+        organizationId: share.organizationId,
+        documentId: doc.id,
+        shareLinkId: share.id,
+        severity: 'medium',
+        alertType: 'REVOKED_ACCESS_ATTEMPT',
+        message: `Attempted access on revoked document from IP ${clientInfo.ipHash}`,
+        ipHash: clientInfo.ipHash,
+        userAgent: clientInfo.userAgent
+      });
+      return { outcome: 'DENIED', reason: 'ACCESS_REVOKED', message: 'Access Revoked' };
+    }
+
+    if (share.revokedAt) {
+      this.recordSecurityAlert({
+        organizationId: share.organizationId,
+        documentId: doc.id,
+        shareLinkId: share.id,
+        severity: 'medium',
+        alertType: 'REVOKED_ACCESS_ATTEMPT',
+        message: `Attempted access on revoked share link from IP ${clientInfo.ipHash}`,
+        ipHash: clientInfo.ipHash,
+        userAgent: clientInfo.userAgent
+      });
+      return { outcome: 'DENIED', reason: 'ACCESS_REVOKED', message: 'Access Revoked' };
+    }
+
+    const now = new Date();
+
+    // 2. Session Resume Check:
+    // If a valid session token is presented for an active, unexpired, unrevoked session on this link,
+    // resume viewing WITHOUT incrementing open count.
+    if (clientInfo.resumeSessionToken) {
+      const candidateHash = crypto.createHash('sha256').update(clientInfo.resumeSessionToken).digest('hex');
+      const existingSession = this.state.accessSessions.find(
+        s => s.shareLinkId === share.id && s.sessionTokenHash === candidateHash && !s.revokedAt
+      );
+
+      if (existingSession) {
+        const isSessExpired = now.getTime() >= new Date(existingSession.expiresAt).getTime() ||
+          now.getTime() >= new Date(share.expiresAt).getTime();
+
+        if (!isSessExpired) {
+          existingSession.lastActiveAt = now.toISOString();
+          this.persist();
+          return {
+            outcome: 'RESUMED',
+            session: existingSession,
+            rawSessionToken: clientInfo.resumeSessionToken,
+            share,
+            document: doc
+          };
+        }
+      }
+    }
+
+    // 3. Expiry check against authoritative server clock
+    if (share.expiryType === 'ABSOLUTE' && now.getTime() >= new Date(share.expiresAt).getTime()) {
+      this.recordSecurityAlert({
+        organizationId: share.organizationId,
+        documentId: doc.id,
+        shareLinkId: share.id,
+        severity: 'low',
+        alertType: 'EXPIRED_ACCESS_ATTEMPT',
+        message: `Attempted access after expiration on share link from IP ${clientInfo.ipHash}`,
+        ipHash: clientInfo.ipHash,
+        userAgent: clientInfo.userAgent
+      });
+      return { outcome: 'DENIED', reason: 'EXPIRED', message: 'Document Expired' };
+    }
+
+    if (share.expiryType === 'FIRST_OPEN' && share.firstOpenedAt && now.getTime() >= new Date(share.expiresAt).getTime()) {
+      this.recordSecurityAlert({
+        organizationId: share.organizationId,
+        documentId: doc.id,
+        shareLinkId: share.id,
+        severity: 'low',
+        alertType: 'EXPIRED_ACCESS_ATTEMPT',
+        message: `Attempted access after expiration on first-open share link from IP ${clientInfo.ipHash}`,
+        ipHash: clientInfo.ipHash,
+        userAgent: clientInfo.userAgent
+      });
+      return { outcome: 'DENIED', reason: 'EXPIRED', message: 'Document Expired' };
+    }
+
+    // 4. Maximum Allowed Successful Opens Check (Atomic)
+    if (share.maxOpens !== null && share.openCount >= share.maxOpens) {
+      this.recordSecurityAlert({
+        organizationId: share.organizationId,
+        documentId: doc.id,
+        shareLinkId: share.id,
+        severity: 'medium',
+        alertType: 'MAX_OPENS_EXCEEDED',
+        message: `Maximum allowed opens (${share.maxOpens}) reached for share link from IP ${clientInfo.ipHash}`,
+        ipHash: clientInfo.ipHash,
+        userAgent: clientInfo.userAgent
+      });
+      return { outcome: 'DENIED', reason: 'MAX_OPENS_REACHED', message: 'Maximum Open Count Reached' };
+    }
+
+    // 5. Single active session check (if policy enabled)
+    if (share.singleSessionOnly) {
+      const activeSessions = this.getActiveSessionsForShare(share.id);
+      if (activeSessions.length > 0) {
+        this.recordSecurityAlert({
+          organizationId: share.organizationId,
+          documentId: doc.id,
+          shareLinkId: share.id,
+          severity: 'high',
+          alertType: 'CONCURRENT_SESSION_BLOCKED',
+          message: `Blocked concurrent session attempt from IP ${clientInfo.ipHash} on single-session document`,
+          ipHash: clientInfo.ipHash,
+          userAgent: clientInfo.userAgent
+        });
+        return {
+          outcome: 'DENIED',
+          reason: 'SINGLE_SESSION_CONFLICT',
+          message: 'Single Active Session Restriction: Document is currently open in another session'
+        };
+      }
+    }
+
+    // 6. Forwarded link detection
+    if (share.boundIpHash && share.boundIpHash !== clientInfo.ipHash) {
+      this.recordSecurityAlert({
+        organizationId: share.organizationId,
+        documentId: doc.id,
+        shareLinkId: share.id,
+        severity: 'medium',
+        alertType: 'FORWARDED_LINK_DETECTED',
+        message: `Share link opened from new IP ${clientInfo.ipHash} (bound IP: ${share.boundIpHash})`,
+        ipHash: clientInfo.ipHash,
+        userAgent: clientInfo.userAgent
+      });
+    } else if (!share.boundIpHash) {
+      share.boundIpHash = clientInfo.ipHash;
+    }
+
+    // 7. Establish first open deadline if FIRST_OPEN semantics
+    if (share.expiryType === 'FIRST_OPEN' && !share.firstOpenedAt) {
+      const authoritativeExpiresAt = new Date(now.getTime() + share.durationSeconds * 1000).toISOString();
+      share.firstOpenedAt = now.toISOString();
+      share.expiresAt = authoritativeExpiresAt;
+    }
+
+    // 8. Atomically increment open count
+    share.openCount += 1;
+
+    // 9. Generate 256-bit cryptographically secure session credential
+    const rawSessionToken = crypto.randomBytes(32).toString('base64url');
+    const sessionTokenHash = crypto.createHash('sha256').update(rawSessionToken).digest('hex');
+
+    const session = this.createAccessSession({
+      shareLinkId: share.id,
+      documentId: doc.id,
+      sessionTokenHash,
+      ipHash: clientInfo.ipHash,
+      userAgent: clientInfo.userAgent,
+      expiresAt: share.expiresAt
+    });
+
+    this.persist();
+
+    return {
+      outcome: 'GRANTED',
+      session,
+      rawSessionToken,
+      share,
+      document: doc
+    };
+  }
+
+  /**
+   * Validates viewer session with server authority, checks expiry, revocation, and token hash.
+   */
+  public validateViewerSessionDetailed(
+    sessionId: string,
+    sessionToken?: string
+  ): {
+    valid: boolean;
+    reason?: 'EXPIRED' | 'ACCESS_REVOKED' | 'INVALID_LINK' | 'INVALID_TOKEN';
+    message?: string;
+    session?: DbAccessSession;
+    share?: DbShareLink;
+    document?: DbDocument;
+  } {
+    const session = this.findAccessSessionById(sessionId);
+    if (!session) {
+      return { valid: false, reason: 'INVALID_LINK', message: 'Session not found or invalid' };
+    }
+
+    if (session.revokedAt) {
+      return { valid: false, reason: 'ACCESS_REVOKED', message: 'Access Revoked: Session has been terminated' };
+    }
+
+    if (sessionToken) {
+      const hash = crypto.createHash('sha256').update(sessionToken).digest('hex');
+      if (hash !== session.sessionTokenHash) {
+        return { valid: false, reason: 'INVALID_TOKEN', message: 'Invalid or Unauthorized Link: Session credential mismatch' };
+      }
+    }
+
+    const share = session.shareLinkId ? this.findShareLinkById(session.shareLinkId) : undefined;
+    if (session.shareLinkId) {
+      if (!share || share.revokedAt) {
+        return { valid: false, reason: 'ACCESS_REVOKED', message: 'Access Revoked: Share link has been revoked' };
+      }
+    }
+
+    const doc = this.state.documents.find(d => d.id === session.documentId && d.status !== 'deleted');
+    if (!doc || doc.status === 'revoked') {
+      return { valid: false, reason: 'ACCESS_REVOKED', message: 'Access Revoked: Document has been revoked or removed' };
+    }
+
+    const now = Date.now();
+    const isExpired = now >= new Date(session.expiresAt).getTime() ||
+      (share && now >= new Date(share.expiresAt).getTime());
+
+    if (isExpired) {
+      return { valid: false, reason: 'EXPIRED', message: 'Document Expired: Access duration has ended' };
+    }
+
+    return {
+      valid: true,
+      session,
+      share,
+      document: doc
+    };
+  }
+
+  /**
+   * Retrieves comprehensive DRM access statistics for a share link.
+   */
+  public getShareStats(shareId: string) {
+    const share = this.state.shareLinks.find(s => s.id === shareId);
+    if (!share) return null;
+    const doc = this.state.documents.find(d => d.id === share.documentId);
+    const now = Date.now();
+    const isRevoked = Boolean(share.revokedAt) || (doc ? doc.status === 'revoked' : false);
+    const isExpired = new Date(share.expiresAt).getTime() <= now;
+    const activeSessions = this.state.accessSessions.filter(
+      s => s.shareLinkId === share.id && !s.revokedAt && new Date(s.expiresAt).getTime() > now
+    );
+
+    return {
+      shareId: share.id,
+      documentId: share.documentId,
+      documentTitle: doc ? doc.title : 'Unknown Document',
+      expiryType: share.expiryType,
+      durationSeconds: share.durationSeconds,
+      firstOpenedAt: share.firstOpenedAt,
+      expiresAt: share.expiresAt,
+      maxOpens: share.maxOpens,
+      openCount: share.openCount,
+      remainingOpens: share.maxOpens !== null ? Math.max(0, share.maxOpens - share.openCount) : null,
+      isExpired,
+      isRevoked,
+      revokedAt: share.revokedAt,
+      activeSessionsCount: activeSessions.length,
+      singleSessionOnly: share.singleSessionOnly,
+      watermarkTemplate: share.watermarkTemplate,
+      createdAt: share.createdAt
+    };
+  }
+
+
   public markShareLinkFirstOpened(id: string, expiresAt: string): DbShareLink | undefined {
     const link = this.state.shareLinks.find(s => s.id === id);
     if (link) {
@@ -835,6 +1156,65 @@ export class Database {
     return this.state.accessEvents
       .filter(e => e.documentId === documentId)
       .sort((a, b) => new Date(b.eventTime).getTime() - new Date(a.eventTime).getTime());
+  }
+
+  // --- Universal Password Protected PDF Retrieval Records ---
+  private ensurePdfPasswordRecords(): DbPdfPasswordRecord[] {
+    if (!this.state.pdfPasswordRecords) {
+      this.state.pdfPasswordRecords = [];
+    }
+    return this.state.pdfPasswordRecords;
+  }
+
+  public createPdfPasswordRecord(
+    record: Omit<DbPdfPasswordRecord, 'id' | 'retrievalCount' | 'revokedAt' | 'createdAt'>
+  ): DbPdfPasswordRecord {
+    const list = this.ensurePdfPasswordRecords();
+    const created: DbPdfPasswordRecord = {
+      ...record,
+      id: uuidv4(),
+      retrievalCount: 0,
+      revokedAt: null,
+      createdAt: new Date().toISOString()
+    };
+    list.push(created);
+    this.persist();
+    return created;
+  }
+
+  public findPdfPasswordByTokenHash(tokenHash: string): DbPdfPasswordRecord | undefined {
+    return this.ensurePdfPasswordRecords().find(r => r.tokenHash === tokenHash);
+  }
+
+  public findPdfPasswordById(id: string): DbPdfPasswordRecord | undefined {
+    return this.ensurePdfPasswordRecords().find(r => r.id === id);
+  }
+
+  public listPdfPasswordRecordsByDocument(documentId: string): DbPdfPasswordRecord[] {
+    return this.ensurePdfPasswordRecords()
+      .filter(r => r.documentId === documentId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  public incrementPdfPasswordRetrieval(id: string): DbPdfPasswordRecord | null {
+    const record = this.findPdfPasswordById(id);
+    if (!record) return null;
+    if (record.revokedAt) return null;
+    if (new Date(record.expiresAt).getTime() <= Date.now()) return null;
+    if (record.maxRetrievals !== null && record.retrievalCount >= record.maxRetrievals) {
+      return null;
+    }
+    record.retrievalCount += 1;
+    this.persist();
+    return record;
+  }
+
+  public revokePdfPasswordRecord(id: string): DbPdfPasswordRecord | undefined {
+    const record = this.findPdfPasswordById(id);
+    if (!record) return undefined;
+    record.revokedAt = new Date().toISOString();
+    this.persist();
+    return record;
   }
 }
 

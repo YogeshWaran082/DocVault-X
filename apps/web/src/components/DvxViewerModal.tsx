@@ -40,6 +40,7 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
   const [authorizing, setAuthorizing] = useState(false);
   const [session, setSession] = useState<{
     sessionId: string;
+    sessionToken?: string;
     documentTitle: string;
     mimeType: string;
     expiresAt: string;
@@ -119,7 +120,7 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
 
       // Fetch memory stream
       setLoadingContent(true);
-      const blob = await ApiClient.fetchDvxContent(auth.sessionId);
+      const blob = await ApiClient.fetchDvxContent(auth.sessionId, auth.sessionToken);
       const url = URL.createObjectURL(blob);
       blobUrlRef.current = url;
       setContentUrl(url);
@@ -157,7 +158,7 @@ export const DvxViewerModal: React.FC<DvxViewerModalProps> = ({ isOpen, onClose 
     }, 1000);
 
     const heartbeat = setInterval(() => {
-      ApiClient.checkDvxSessionStatus(session.sessionId)
+      ApiClient.checkDvxSessionStatus(session.sessionId, session.sessionToken)
         .then((status) => {
           if (!status.active || status.remainingSeconds <= 0) {
             triggerExpire();

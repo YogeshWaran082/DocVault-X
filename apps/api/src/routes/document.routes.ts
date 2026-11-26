@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import * as crypto from 'node:crypto';
 import multer from 'multer';
 import { db } from '../storage/db.js';
 import { vault } from '../storage/vault.js';
@@ -7,6 +8,12 @@ import {
   InitiateUploadRequestSchema,
   CreatePolicyRequestSchema
 } from '@docvault/contracts';
+import {
+  createPasswordProtectedPdf,
+  generateSecurePdfPassword,
+  PdfEncryptionError,
+  UnsupportedPdfConversionError
+} from '../services/pdf-protection.service.js';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -483,4 +490,194 @@ documentRouter.post('/:id/view-content', (req: AuthenticatedRequest, res: Respon
   res.setHeader('Content-Type', doc.mimeDetected || 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${doc.title}"`);
   return res.send(plaintext);
+});
+
+/**
+ * 13. POST /:id/password-pdf: Export a standard AES-256 password-protected .pdf
+ * Preserves the original uploaded document in the vault.
+ * Never exposes passwords in audit logs or public APIs.
+ */
+documentRouter.post(
+  '/:id/password-pdf',
+  requireRole(['owner', 'admin', 'sender']),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const doc = db.findDocumentById(req.user!.organizationId, req.params['id']!);
+    if (!doc) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    if (doc.status !== 'active') {
+      return res.status(403).json({ error: `Cannot export: document is ${doc.status}` });
+    }
+
+    const schema = z.object({
+      passwordMode: z.enum(['custom', 'random']).default('random'),
+      userPassword: z.string().min(4).max(127).optional(),
+      ownerPasswordMode: z.enum(['custom', 'random']).default('random'),
+      ownerPassword: z.string().min(4).max(127).optional(),
+      permissions: z
+        .object({
+          allowPrinting: z.boolean().default(false),
+          allowCopying: z.boolean().default(false),
+          allowModifying: z.boolean().default(false)
+        })
+        .default({ allowPrinting: false, allowCopying: false, allowModifying: false }),
+      enablePasswordRetrieval: z.boolean().default(false),
+      retrievalExpirySeconds: z.number().int().min(60).max(60 * 60 * 24 * 365).default(3600),
+      maxRetrievals: z.number().int().positive().max(1000).nullable().optional()
+    });
+
+    const parse = schema.safeParse(req.body ?? {});
+    if (!parse.success) {
+      return res.status(400).json({ error: 'Validation failed', details: parse.error.format() });
+    }
+
+    const opts = parse.data;
+    if (opts.passwordMode === 'custom' && (!opts.userPassword || opts.userPassword.length < 4)) {
+      return res.status(400).json({ error: 'Custom document opening password must be at least 4 characters' });
+    }
+    if (opts.ownerPasswordMode === 'custom' && (!opts.ownerPassword || opts.ownerPassword.length < 4)) {
+      return res.status(400).json({ error: 'Custom owner permission password must be at least 4 characters' });
+    }
+
+    const userPassword =
+      opts.passwordMode === 'custom' ? opts.userPassword! : generateSecurePdfPassword(16);
+    let ownerPassword =
+      opts.ownerPasswordMode === 'custom' ? opts.ownerPassword! : generateSecurePdfPassword(24);
+
+    if (ownerPassword === userPassword) {
+      if (opts.ownerPasswordMode === 'custom') {
+        return res.status(400).json({
+          error: 'Owner permission password must be different from the document opening password'
+        });
+      }
+      ownerPassword = generateSecurePdfPassword(24);
+    }
+
+    const versions = db.findVersionsByDocument(doc.id);
+    const latestVersion = versions[versions.length - 1];
+    if (!latestVersion) {
+      return res.status(404).json({ error: 'No document version found' });
+    }
+
+    const originalPlaintext = vault.getDecryptedOriginal(
+      latestVersion.objectKey,
+      latestVersion.wrappedDekRef
+    );
+
+    let protectedResult;
+    try {
+      protectedResult = await createPasswordProtectedPdf(
+        originalPlaintext,
+        doc.mimeDetected,
+        doc.title,
+        {
+          userPassword,
+          ownerPassword,
+          permissions: opts.permissions
+        }
+      );
+    } catch (err) {
+      if (err instanceof UnsupportedPdfConversionError || err instanceof PdfEncryptionError) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: 'Failed to encrypt PDF with AES-256' });
+    }
+
+    let retrievalInfo: {
+      id: string;
+      token: string;
+      expiresAt: string;
+      maxRetrievals: number | null;
+    } | null = null;
+
+    if (opts.enablePasswordRetrieval) {
+      const rawToken = crypto.randomBytes(32).toString('base64url');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + opts.retrievalExpirySeconds * 1000).toISOString();
+      const encryptedUserPassword = vault.encryptSecret(userPassword);
+      const maxRetrievals = opts.maxRetrievals === undefined ? 1 : opts.maxRetrievals;
+
+      const record = db.createPdfPasswordRecord({
+        organizationId: req.user!.organizationId,
+        documentId: doc.id,
+        tokenHash,
+        encryptedUserPassword,
+        expiresAt,
+        maxRetrievals,
+        permissions: opts.permissions
+      });
+
+      retrievalInfo = {
+        id: record.id,
+        token: rawToken,
+        expiresAt: record.expiresAt,
+        maxRetrievals: record.maxRetrievals
+      };
+    }
+
+    // Record audit event without ever storing or logging any password
+    db.recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      actorUserId: req.user!.id,
+      action: 'PASSWORD_PDF_EXPORTED',
+      targetType: 'document',
+      targetId: doc.id,
+      ipHash: null,
+      detailsRedacted: JSON.stringify({
+        algorithm: 'AES-256',
+        passwordMode: opts.passwordMode,
+        ownerPasswordMode: opts.ownerPasswordMode,
+        permissions: opts.permissions,
+        retrievalEnabled: opts.enablePasswordRetrieval,
+        retrievalId: retrievalInfo?.id || null
+      })
+    });
+
+    const baseName = doc.title.replace(/\.pdf$/i, '');
+    const exportFilename = `${baseName}-protected.pdf`;
+
+    if (req.query['format'] === 'binary') {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${exportFilename}"`);
+      res.setHeader('X-DocVault-Encryption', 'PDF-AES-256');
+      return res.send(protectedResult.pdfBuffer);
+    }
+
+    return res.status(200).json({
+      filename: exportFilename,
+      mimeType: 'application/pdf',
+      sizeBytes: protectedResult.pdfBuffer.length,
+      algorithm: protectedResult.algorithm,
+      permissions: protectedResult.permissions,
+      userPassword,
+      ownerPasswordGenerated: opts.ownerPasswordMode === 'random',
+      pdfBase64: protectedResult.pdfBuffer.toString('base64'),
+      retrieval: retrievalInfo
+    });
+  }
+);
+
+/**
+ * 14. GET /:id/pdf-passwords: List optional password retrieval links for a document.
+ * NEVER exposes encrypted or plaintext passwords.
+ */
+documentRouter.get('/:id/pdf-passwords', (req: AuthenticatedRequest, res: Response) => {
+  const doc = db.findDocumentById(req.user!.organizationId, req.params['id']!);
+  if (!doc) {
+    return res.status(404).json({ error: 'Document not found' });
+  }
+
+  const records = db.listPdfPasswordRecordsByDocument(doc.id).map((r) => ({
+    id: r.id,
+    documentId: r.documentId,
+    expiresAt: r.expiresAt,
+    maxRetrievals: r.maxRetrievals,
+    retrievalCount: r.retrievalCount,
+    revokedAt: r.revokedAt,
+    createdAt: r.createdAt,
+    permissions: r.permissions
+  }));
+
+  return res.json({ records });
 });

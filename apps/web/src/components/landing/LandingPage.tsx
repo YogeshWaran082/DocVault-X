@@ -4,14 +4,11 @@ import { HeroSection } from './HeroSection';
 import { SupportedFormats } from './SupportedFormats';
 import { SecurityShowcase } from './SecurityShowcase';
 import { HowItWorks } from './HowItWorks';
-import { AppShowcase } from './AppShowcase';
-import { DownloadsSection } from './DownloadsSection';
 import { FaqSection } from './FaqSection';
 import { LandingFooter } from './LandingFooter';
 
 interface LandingPageProps {
   onNavigateToAdmin: () => void;
-  onOpenDvx: () => void;
   isAuthenticated: boolean;
 }
 
@@ -48,12 +45,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         {/* How It Works - 3 Step Visual */}
         <HowItWorks />
-
-        {/* Application Showcase - Multi-Platform Tabs */}
-        <AppShowcase />
-
-        {/* Application Downloads - Native OS Builds */}
-        <DownloadsSection />
 
         {/* FAQ - Deep Technical Clarifications */}
         <FaqSection />

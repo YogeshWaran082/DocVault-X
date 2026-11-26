@@ -4,10 +4,10 @@ import { SecurityBanner } from './components/SecurityBanner';
 import { DocumentList } from './components/DocumentList';
 import { UploadModal } from './components/UploadModal';
 import { DocumentViewerModal } from './components/DocumentViewerModal';
-import { DvxViewerModal } from './components/DvxViewerModal';
 import { AuditLogView } from './components/AuditLogView';
 import { AuthScreen } from './components/AuthScreen';
 import { ReceiverViewer } from './components/ReceiverViewer';
+import { PdfPasswordRetrievalView } from './components/PdfPasswordRetrievalView';
 import { LandingPage } from './components/landing/LandingPage';
 import { ApiClient } from './api/client';
 import { User, Organization, Document, Policy } from './types';
@@ -23,6 +23,14 @@ export function App() {
     return urlParams.get('share');
   });
 
+  const [pdfPasswordToken, setPdfPasswordToken] = useState<string | null>(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#/pdf-password/')) {
+      return hash.replace('#/pdf-password/', '');
+    }
+    return null;
+  });
+
   const [route, setRoute] = useState<'landing' | 'admin' | 'dashboard'>(() => {
     const hash = window.location.hash;
     if (hash === '#/admin' || hash === '#/auth') return 'admin';
@@ -35,7 +43,6 @@ export function App() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [activeTab, setActiveTab] = useState<'documents' | 'audit' | 'docs'>('documents');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [isDvxModalOpen, setIsDvxModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
   const [previewPolicy, setPreviewPolicy] = useState<Policy | null>(null);
   const [darkMode, setDarkMode] = useState(false);
@@ -47,15 +54,18 @@ export function App() {
       const hash = window.location.hash;
       if (hash.startsWith('#/share/')) {
         setShareToken(hash.replace('#/share/', ''));
-      } else if (hash === '#/dvx') {
-        setIsDvxModalOpen(true);
+        setPdfPasswordToken(null);
+      } else if (hash.startsWith('#/pdf-password/')) {
+        setPdfPasswordToken(hash.replace('#/pdf-password/', ''));
         setShareToken(null);
       } else if (hash === '#/admin' || hash === '#/auth') {
         setRoute('admin');
         setShareToken(null);
+        setPdfPasswordToken(null);
       } else if (hash === '#/dashboard' || hash === '#/app') {
         setRoute('dashboard');
         setShareToken(null);
+        setPdfPasswordToken(null);
       } else if (
         hash === '' ||
         hash === '#' ||
@@ -68,6 +78,7 @@ export function App() {
       ) {
         setRoute('landing');
         setShareToken(null);
+        setPdfPasswordToken(null);
       }
     };
     window.addEventListener('hashchange', handleHashChange);
@@ -98,19 +109,10 @@ export function App() {
         setOrganization(data.currentOrganization);
         await loadDocuments();
       } catch {
-        // Fallback for demo session if API backend is offline locally
-        setUser({
-          id: 'usr_demo_admin',
-          email: 'admin@docvault-demo.com',
-          name: 'Security Executive',
-          mfaEnabled: true,
-        });
-        setOrganization({
-          id: 'org_defense_labs',
-          name: 'Global Defense Labs',
-          role: 'owner',
-        });
-        await loadDocuments();
+        // Clear expired or invalid token so user re-authenticates cleanly
+        ApiClient.setToken(null);
+        setUser(null);
+        setOrganization(null);
       }
     } catch {
       ApiClient.setToken(null);
@@ -205,6 +207,10 @@ export function App() {
     return <ReceiverViewer token={shareToken} />;
   }
 
+  if (pdfPasswordToken) {
+    return <PdfPasswordRetrievalView token={pdfPasswordToken} />;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0A1222] text-slate-400">
@@ -219,24 +225,10 @@ export function App() {
   // View 1: Public Premium Landing Page (Default Home)
   if (route === 'landing') {
     return (
-      <>
-        <LandingPage
-          onNavigateToAdmin={handleGoToAdmin}
-          onOpenDvx={() => setIsDvxModalOpen(true)}
-          isAuthenticated={Boolean(user && organization)}
-        />
-
-        {/* DVX Container Inspector Modal accessible from landing */}
-        <DvxViewerModal
-          isOpen={isDvxModalOpen}
-          onClose={() => {
-            setIsDvxModalOpen(false);
-            if (window.location.hash === '#/dvx') {
-              window.location.hash = '';
-            }
-          }}
-        />
-      </>
+      <LandingPage
+        onNavigateToAdmin={handleGoToAdmin}
+        isAuthenticated={Boolean(user && organization)}
+      />
     );
   }
 
@@ -279,7 +271,6 @@ export function App() {
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         onOpenUpload={() => setIsUploadOpen(true)}
-        onOpenDvx={() => setIsDvxModalOpen(true)}
         onLogout={handleLogout}
         onGoToLanding={handleGoToLanding}
       />
@@ -394,17 +385,6 @@ export function App() {
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onSuccess={loadDocuments}
-      />
-
-      {/* Mode B: DVX Browser Viewer Modal */}
-      <DvxViewerModal
-        isOpen={isDvxModalOpen}
-        onClose={() => {
-          setIsDvxModalOpen(false);
-          if (window.location.hash === '#/dvx') {
-            window.location.hash = '';
-          }
-        }}
       />
 
       {/* Secure Document Viewer Modal */}

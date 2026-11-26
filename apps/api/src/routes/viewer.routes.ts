@@ -9,72 +9,52 @@ export const viewerRouter = Router();
  */
 function validateViewerSession(req: Request, res: Response) {
   const sessionId = req.params['id']!;
-  const session = db.findAccessSessionById(sessionId);
+  const sessionToken = (req.headers['x-session-token'] as string | undefined) || (req.query['token'] as string | undefined);
 
-  if (!session) {
-    res.status(404).json({ error: 'Session not found' });
-    return null;
-  }
+  const validation = db.validateViewerSessionDetailed(sessionId, sessionToken);
 
-  // Check session revocation
-  if (session.revokedAt) {
-    db.recordSecurityAlert({
-      organizationId: 'default',
-      documentId: session.documentId,
-      shareLinkId: session.shareLinkId || undefined,
-      severity: 'medium',
-      alertType: 'REVOKED_ACCESS_ATTEMPT',
-      message: `Viewer attempted access on terminated session ${sessionId.substring(0, 8)}`,
-      ipHash: session.ipHash,
-      userAgent: session.userAgent
-    });
-    res.status(403).json({ error: 'Access revoked: Session has been terminated by document owner' });
-    return null;
-  }
-
-  // Check parent share link status (if linked to a share link)
-  const share = session.shareLinkId ? db.findShareLinkById(session.shareLinkId) : undefined;
-  if (session.shareLinkId) {
-    if (!share || share.revokedAt) {
-      db.recordSecurityAlert({
-        organizationId: share ? share.organizationId : 'default',
-        documentId: session.documentId,
-        shareLinkId: session.shareLinkId,
-        severity: 'medium',
-        alertType: 'REVOKED_ACCESS_ATTEMPT',
-        message: `Viewer attempted access on revoked share link`,
-        ipHash: session.ipHash,
-        userAgent: session.userAgent
+  if (!validation.valid) {
+    if (validation.reason === 'EXPIRED') {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.status(410).json({
+        error: 'Unable to Open Document',
+        reason: 'Document Expired',
+        code: 'EXPIRED',
+        expiredAt: validation.session?.expiresAt
       });
-      res.status(403).json({ error: 'Access revoked: Share link has been revoked' });
       return null;
     }
-  }
 
-  // Authoritative server clock check: no reliance on client browser time!
-  const now = new Date();
-  const isExpired = now.getTime() >= new Date(session.expiresAt).getTime() ||
-    (share && now.getTime() >= new Date(share.expiresAt).getTime());
+    if (validation.reason === 'ACCESS_REVOKED') {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.status(403).json({
+        error: 'Unable to Open Document',
+        reason: 'Access Revoked',
+        code: 'ACCESS_REVOKED'
+      });
+      return null;
+    }
 
-  if (isExpired) {
-    db.recordSecurityAlert({
-      organizationId: share ? share.organizationId : 'default',
-      documentId: session.documentId,
-      shareLinkId: session.shareLinkId || undefined,
-      severity: 'low',
-      alertType: 'EXPIRED_ACCESS_ATTEMPT',
-      message: `Viewer attempted to fetch content after expiry`,
-      ipHash: session.ipHash,
-      userAgent: session.userAgent
-    });
-    res.status(410).json({
-      error: 'Document expired: Access duration has ended',
-      expiredAt: session.expiresAt
+    if (validation.reason === 'INVALID_TOKEN') {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.status(403).json({
+        error: 'Unable to Open Document',
+        reason: 'Invalid or Unauthorized Link',
+        code: 'INVALID_TOKEN'
+      });
+      return null;
+    }
+
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.status(404).json({
+      error: 'Unable to Open Document',
+      reason: 'Invalid or Unauthorized Link',
+      code: 'INVALID_LINK'
     });
     return null;
   }
 
-  return { session, share };
+  return { session: validation.session!, share: validation.share, document: validation.document! };
 }
 
 /**
@@ -87,8 +67,9 @@ viewerRouter.get('/sessions/:id/status', (req: Request, res: Response) => {
   const { session, share } = validated;
   db.touchAccessSession(session.id);
 
-  const now = new Date();
-  const remainingSeconds = Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - now.getTime()) / 1000));
+  const now = Date.now();
+  const remainingSeconds = Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - now) / 1000));
+  const remainingOpens = share && share.maxOpens !== null ? Math.max(0, share.maxOpens - share.openCount) : null;
 
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   return res.json({
@@ -96,7 +77,9 @@ viewerRouter.get('/sessions/:id/status', (req: Request, res: Response) => {
     expiresAt: session.expiresAt,
     remainingSeconds,
     openCount: share ? share.openCount : 1,
-    maxOpens: share ? share.maxOpens : null
+    maxOpens: share ? share.maxOpens : null,
+    remainingOpens,
+    serverTimeUtc: new Date().toISOString()
   });
 });
 
@@ -108,22 +91,19 @@ viewerRouter.get('/sessions/:id/content', (req: Request, res: Response) => {
   const validated = validateViewerSession(req, res);
   if (!validated) return;
 
-  const { session } = validated;
-
-  const allDocs = (db as any).state?.documents || [];
-  const targetDoc = allDocs.find((d: any) => d.id === session.documentId);
-
-  if (!targetDoc || targetDoc.status !== 'active') {
-    return res.status(404).json({ error: 'Document not found or inactive' });
-  }
+  const { session, document: targetDoc } = validated;
 
   const versions = db.findVersionsByDocument(targetDoc.id);
   const latestVersion = versions[versions.length - 1];
   if (!latestVersion) {
-    return res.status(404).json({ error: 'Document version payload missing' });
+    return res.status(404).json({
+      error: 'Unable to Open Document',
+      reason: 'Invalid or Unauthorized Link',
+      code: 'MISSING_PAYLOAD'
+    });
   }
 
-  // Decrypt on-the-fly in server RAM
+  // Decrypt on-the-fly in server RAM only
   const plaintext = vault.getDecryptedOriginal(latestVersion.objectKey, latestVersion.wrappedDekRef);
 
   db.recordAccessEvent({

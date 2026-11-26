@@ -763,4 +763,452 @@ describe('DocVault X API Integration Tests', () => {
       assert.strictEqual(statusRes.status, 410);
     });
   });
+
+  describe('DRM Protection Engine & License API (Server-Enforced Access Policies)', () => {
+    let drmDocId: string;
+
+    before(async () => {
+      // Upload a test document for DRM testing
+      const boundary = '----DocVaultBoundaryDRM' + Math.random().toString(16);
+      const postBody = Buffer.concat([
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="title"\r\n\r\nDRM Protected Quarterly Audit.pdf\r\n`),
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audit.pdf"\r\nContent-Type: application/pdf\r\n\r\n`),
+        Buffer.from('%PDF-1.7 Top Secret DRM Document Plaintext Payload'),
+        Buffer.from(`\r\n--${boundary}--\r\n`)
+      ]);
+
+      const res = await fetch(`${baseUrl}/api/v1/documents/upload-direct`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`
+        },
+        body: postBody
+      });
+      assert.strictEqual(res.status, 201);
+      const data = await res.json() as any;
+      drmDocId = data.document.id;
+    });
+
+    it('DRM: opens protected document and returns short-lived session credentials', async () => {
+      // 1. Create a share link
+      const createRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}/shares`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expirySeconds: 60, maxOpens: 5 })
+      });
+      assert.strictEqual(createRes.status, 201);
+      const { token, shareId } = await createRes.json() as any;
+
+      // 2. Open via DRM API
+      const openRes = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(openRes.status, 201);
+      const openData = await openRes.json() as any;
+      assert.ok(openData.sessionId);
+      assert.ok(openData.sessionToken);
+      assert.strictEqual(openData.isResumed, false);
+      assert.strictEqual(openData.openCount, 1);
+      assert.strictEqual(openData.maxOpens, 5);
+      assert.strictEqual(openData.remainingOpens, 4);
+
+      // 3. Validate viewing session
+      const validateRes = await fetch(`${baseUrl}/api/v1/drm/sessions/${openData.sessionId}/validate`, {
+        headers: { 'x-session-token': openData.sessionToken }
+      });
+      assert.strictEqual(validateRes.status, 200);
+      const validateData = await validateRes.json() as any;
+      assert.strictEqual(validateData.active, true);
+
+      // 4. Fetch authorized content
+      const contentRes = await fetch(`${baseUrl}/api/v1/drm/sessions/${openData.sessionId}/content`, {
+        headers: { 'x-session-token': openData.sessionToken }
+      });
+      assert.strictEqual(contentRes.status, 200);
+      assert.match(contentRes.headers.get('cache-control') || '', /no-store/);
+      const content = await contentRes.text();
+      assert.strictEqual(content, '%PDF-1.7 Top Secret DRM Document Plaintext Payload');
+
+      // 5. Check DRM statistics
+      const statsRes = await fetch(`${baseUrl}/api/v1/drm/shares/${shareId}/stats`, {
+        headers: { Authorization: `Bearer ${tokenOrgA}` }
+      });
+      assert.strictEqual(statsRes.status, 200);
+      const statsData = await statsRes.json() as any;
+      assert.strictEqual(statsData.stats.openCount, 1);
+      assert.strictEqual(statsData.stats.remainingOpens, 4);
+      assert.strictEqual(statsData.stats.isExpired, false);
+      assert.strictEqual(statsData.stats.isRevoked, false);
+    });
+
+    it('DRM: valid session resume does NOT consume additional opens (zoom/page/refresh)', async () => {
+      // 1. Create a share link with maxOpens = 1
+      const createRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}/shares`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expirySeconds: 120, maxOpens: 1 })
+      });
+      assert.strictEqual(createRes.status, 201);
+      const { token, shareId } = await createRes.json() as any;
+
+      // 2. Open 1st time
+      const open1Res = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(open1Res.status, 201);
+      const open1Data = await open1Res.json() as any;
+      assert.strictEqual(open1Data.openCount, 1);
+      assert.strictEqual(open1Data.isResumed, false);
+
+      // 3. Tab reload / session resume with existing sessionToken
+      const resumeRes = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-token': open1Data.sessionToken
+        },
+        body: JSON.stringify({ token, sessionToken: open1Data.sessionToken })
+      });
+      assert.strictEqual(resumeRes.status, 200);
+      const resumeData = await resumeRes.json() as any;
+      assert.strictEqual(resumeData.isResumed, true);
+      assert.strictEqual(resumeData.sessionId, open1Data.sessionId);
+      // openCount remains 1 (did not increment!)
+      assert.strictEqual(resumeData.openCount, 1);
+
+      // 4. Repeated content fetches for zooming/page changing do NOT increment opens
+      const contentRes = await fetch(`${baseUrl}/api/v1/drm/sessions/${open1Data.sessionId}/content`, {
+        headers: { 'x-session-token': open1Data.sessionToken }
+      });
+      assert.strictEqual(contentRes.status, 200);
+
+      // 5. Verify stats: openCount is STILL 1
+      const statsRes = await fetch(`${baseUrl}/api/v1/drm/shares/${shareId}/stats`, {
+        headers: { Authorization: `Bearer ${tokenOrgA}` }
+      });
+      const stats = await statsRes.json() as any;
+      assert.strictEqual(stats.stats.openCount, 1);
+    });
+
+    it('DRM: enforces maximum open count limit and denies further access', async () => {
+      // 1. Create a share link with maxOpens = 2
+      const createRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}/shares`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expirySeconds: 60, maxOpens: 2 })
+      });
+      const { token } = await createRes.json() as any;
+
+      // 2. Open 1: Success
+      const open1 = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(open1.status, 201);
+      const d1 = await open1.json() as any;
+      assert.strictEqual(d1.openCount, 1);
+
+      // 3. Open 2: Success
+      const open2 = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(open2.status, 201);
+      const d2 = await open2.json() as any;
+      assert.strictEqual(d2.openCount, 2);
+
+      // 4. Open 3: Exceeded limit -> Denied with 403 Forbidden
+      const open3 = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(open3.status, 403);
+      const err3 = await open3.json() as any;
+      assert.strictEqual(err3.error, 'Unable to Open Document');
+      assert.strictEqual(err3.reason, 'Maximum Open Count Reached');
+      assert.strictEqual(err3.code, 'MAX_OPENS_REACHED');
+    });
+
+    it('DRM: concurrent requests cannot bypass maxOpens limit (atomic locking)', async () => {
+      // 1. Create a share link with maxOpens = 1
+      const createRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}/shares`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expirySeconds: 60, maxOpens: 1 })
+      });
+      const { token, shareId } = await createRes.json() as any;
+
+      // 2. Fire 10 simultaneous concurrent open requests
+      const promises = Array.from({ length: 10 }).map(() =>
+        fetch(`${baseUrl}/api/v1/drm/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        })
+      );
+
+      const responses = await Promise.all(promises);
+      const statuses = responses.map(r => r.status);
+
+      // Exactly 1 request must succeed (201 Created)
+      const successCount = statuses.filter(s => s === 201).length;
+      assert.strictEqual(successCount, 1, 'Only one concurrent open should succeed');
+
+      // The other 9 requests must be denied with 403 Forbidden
+      const deniedCount = statuses.filter(s => s === 403).length;
+      assert.strictEqual(deniedCount, 9, 'All other concurrent opens should be denied');
+
+      // Verify DB state: openCount is exactly 1
+      const statsRes = await fetch(`${baseUrl}/api/v1/drm/shares/${shareId}/stats`, {
+        headers: { Authorization: `Bearer ${tokenOrgA}` }
+      });
+      const stats = await statsRes.json() as any;
+      assert.strictEqual(stats.stats.openCount, 1);
+    });
+
+    it('DRM: enforces server-side expiry and blocks content delivery after duration concludes', async () => {
+      // 1. Create a share with 1 second expiry
+      const createRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}/shares`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expirySeconds: 1 })
+      });
+      const { token } = await createRes.json() as any;
+
+      // 2. Open immediately
+      const openRes = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(openRes.status, 201);
+      const { sessionId, sessionToken } = await openRes.json() as any;
+
+      // 3. Immediately fetch content: OK
+      const initContent = await fetch(`${baseUrl}/api/v1/drm/sessions/${sessionId}/content`, {
+        headers: { 'x-session-token': sessionToken }
+      });
+      assert.strictEqual(initContent.status, 200);
+
+      // 4. Wait 1.2s for authoritative expiry
+      await new Promise(r => setTimeout(r, 1200));
+
+      // 5. Subsequent content fetch is denied with 410 Gone
+      const expiredContent = await fetch(`${baseUrl}/api/v1/drm/sessions/${sessionId}/content`, {
+        headers: { 'x-session-token': sessionToken }
+      });
+      assert.strictEqual(expiredContent.status, 410);
+      const expData = await expiredContent.json() as any;
+      assert.strictEqual(expData.error, 'Unable to Open Document');
+      assert.strictEqual(expData.reason, 'Document Expired');
+
+      // 6. Validating session is also 410 Gone
+      const expiredValidate = await fetch(`${baseUrl}/api/v1/drm/sessions/${sessionId}/validate`);
+      assert.strictEqual(expiredValidate.status, 410);
+
+      // 7. Reopening the link is denied with 410 Gone
+      const reopenRes = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(reopenRes.status, 410);
+      const reopenErr = await reopenRes.json() as any;
+      assert.strictEqual(reopenErr.reason, 'Document Expired');
+    });
+
+    it('DRM: manual revocation immediately disconnects active sessions and denies reopening', async () => {
+      // 1. Create a share link
+      const createRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}/shares`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expirySeconds: 300 })
+      });
+      const { token, shareId } = await createRes.json() as any;
+
+      // 2. Open session
+      const openRes = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(openRes.status, 201);
+      const { sessionId, sessionToken } = await openRes.json() as any;
+
+      // 3. Sender revokes share
+      const revokeRes = await fetch(`${baseUrl}/api/v1/drm/shares/${shareId}/revoke`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenOrgA}` }
+      });
+      assert.strictEqual(revokeRes.status, 200);
+
+      // 4. Session heartbeat immediately reflects revocation (403 Forbidden)
+      const statusRes = await fetch(`${baseUrl}/api/v1/drm/sessions/${sessionId}/validate`);
+      assert.strictEqual(statusRes.status, 403);
+      const statusErr = await statusRes.json() as any;
+      assert.strictEqual(statusErr.error, 'Unable to Open Document');
+      assert.strictEqual(statusErr.reason, 'Access Revoked');
+
+      // 5. Active viewer content delivery is blocked (403 Forbidden)
+      const contentRes = await fetch(`${baseUrl}/api/v1/drm/sessions/${sessionId}/content`, {
+        headers: { 'x-session-token': sessionToken }
+      });
+      assert.strictEqual(contentRes.status, 403);
+      const contentErr = await contentRes.json() as any;
+      assert.strictEqual(contentErr.reason, 'Access Revoked');
+
+      // 6. Attempting to reopen revoked link is blocked (403 Forbidden)
+      const reopenRes = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      assert.strictEqual(reopenRes.status, 403);
+      const reopenErr = await reopenRes.json() as any;
+      assert.strictEqual(reopenErr.reason, 'Access Revoked');
+    });
+
+    it('DRM: rejects invalid or unauthorized share tokens', async () => {
+      const openRes = await fetch(`${baseUrl}/api/v1/drm/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'completely-nonexistent-token-12345' })
+      });
+      assert.strictEqual(openRes.status, 404);
+      const err = await openRes.json() as any;
+      assert.strictEqual(err.error, 'Unable to Open Document');
+      assert.strictEqual(err.reason, 'Invalid or Unauthorized Link');
+    });
+
+    it('DRM: cross-platform license validation endpoint evaluates native policy', async () => {
+      // 1. Enroll device
+      const chalRes = await fetch(`${baseUrl}/api/v1/devices/enroll/challenge`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ platform: 'android' })
+      });
+      assert.strictEqual(chalRes.status, 200);
+      const { challenge } = await chalRes.json() as any;
+
+      const compRes = await fetch(`${baseUrl}/api/v1/devices/enroll/complete`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          challenge,
+          devicePublicKey: 'android-hardware-keystore-pubkey-01',
+          platform: 'android',
+          signature: 'attestation-sig-01'
+        })
+      });
+      assert.strictEqual(compRes.status, 201);
+      const { device } = await compRes.json() as any;
+      assert.ok(device.id);
+
+      // 2. Grant recipient access
+      const grantRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}/grants`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipientEmail: 'mobile.user@acme-corp.com'
+        })
+      });
+      const { grant } = await grantRes.json() as any;
+
+      // 3. Issue license
+      const issueRes = await fetch(`${baseUrl}/api/v1/licenses/issue`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenOrgA}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          grantId: grant.id,
+          deviceId: device.id
+        })
+      });
+      assert.strictEqual(issueRes.status, 201);
+      const { license } = await issueRes.json() as any;
+
+      // 4. Validate license via cross-platform DRM license API
+      const valRes = await fetch(`${baseUrl}/api/v1/drm/licenses/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          licenseJti: license.licenseJti,
+          deviceId: device.id
+        })
+      });
+      assert.strictEqual(valRes.status, 200);
+      const valData = await valRes.json() as any;
+      assert.strictEqual(valData.isValid, true);
+      assert.strictEqual(valData.isRevoked, false);
+      assert.strictEqual(valData.isExpired, false);
+      assert.ok(valData.remainingSeconds > 0);
+
+      // 5. Test mismatched device
+      const badDevRes = await fetch(`${baseUrl}/api/v1/drm/licenses/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          licenseJti: license.licenseJti,
+          deviceId: '00000000-0000-0000-0000-000000000000'
+        })
+      });
+      assert.strictEqual(badDevRes.status, 403);
+    });
+
+    it('DRM: encrypted original file in vault remains preserved after share expiration/revocation', async () => {
+      // Fetch document details
+      const docRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}`, {
+        headers: { Authorization: `Bearer ${tokenOrgA}` }
+      });
+      assert.strictEqual(docRes.status, 200);
+      const docData = await docRes.json() as any;
+      assert.strictEqual(docData.document.id, drmDocId);
+
+      // Verify that downloading the encrypted .dvx container still succeeds and contains DVX1 header
+      const dlRes = await fetch(`${baseUrl}/api/v1/documents/${drmDocId}/protected-download`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenOrgA}` }
+      });
+      assert.strictEqual(dlRes.status, 200);
+      const buf = Buffer.from(await dlRes.arrayBuffer());
+      assert.strictEqual(buf.subarray(0, 4).toString('ascii'), 'DVX1');
+    });
+  });
 });

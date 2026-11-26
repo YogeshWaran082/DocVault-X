@@ -11,6 +11,8 @@ import { auditRouter } from './routes/audit.routes.js';
 import { shareRouter, documentShareRouter } from './routes/share.routes.js';
 import { viewerRouter } from './routes/viewer.routes.js';
 import { dvxRouter } from './routes/dvx.routes.js';
+import { drmRouter } from './routes/drm.routes.js';
+import { pdfPasswordRouter } from './routes/pdf-password.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -37,6 +39,8 @@ export function createApp(): Express {
   v1.use('/shares', shareRouter);
   v1.use('/viewer', viewerRouter);
   v1.use('/dvx', dvxRouter);
+  v1.use('/drm', drmRouter);
+  v1.use('/pdf-passwords', pdfPasswordRouter);
   v1.use('/licenses', licenseRouter);
   v1.use('/devices', deviceRouter);
   v1.use('/audit', auditRouter);
@@ -65,8 +69,15 @@ export function createApp(): Express {
         '/documents/{id}/grants': { post: { summary: 'Grant recipient access' } },
         '/documents/{id}/protected-download': { post: { summary: 'Download encrypted .dvx container' } },
         '/documents/{id}/unprotected-export': { post: { summary: 'Export decrypted standard file (Mode A)' } },
+        '/drm/open': { post: { summary: 'Open protected document or resume viewing session' } },
+        '/drm/sessions/{id}/validate': { get: { summary: 'Validate viewing session' } },
+        '/drm/sessions/{id}/content': { get: { summary: 'Fetch authorized decrypted document content' } },
+        '/drm/shares/{id}/revoke': { post: { summary: 'Revoke share link access' } },
+        '/drm/shares/{id}/stats': { get: { summary: 'Retrieve DRM access statistics' } },
+        '/drm/licenses/validate': { post: { summary: 'Validate cross-platform viewer license' } },
         '/licenses/issue': { post: { summary: 'Issue signed offline lease license' } },
         '/licenses/{id}/status': { get: { summary: 'Check license validity' } },
+        '/licenses/validate': { post: { summary: 'Validate cross-platform viewer license' } },
         '/devices/enroll/challenge': { post: { summary: 'Request device enrollment challenge' } },
         '/devices/enroll/complete': { post: { summary: 'Complete device enrollment' } },
         '/audit': { get: { summary: 'List tenant audit logs' } }

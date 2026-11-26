@@ -2,7 +2,8 @@ import { Router, Response } from 'express';
 import { db } from '../storage/db.js';
 import { vault } from '../storage/vault.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
-import { IssueLicenseRequestSchema } from '@docvault/contracts';
+import { IssueLicenseRequestSchema, ValidateLicenseRequestSchema } from '@docvault/contracts';
+import { PolicyEngine } from '@docvault/policy-core';
 import { DvxCryptoEngine } from '@docvault/crypto-core';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -127,5 +128,59 @@ licenseRouter.get('/:id/status', (req: AuthenticatedRequest, res: Response) => {
     isExpired,
     isRevoked,
     leaseExpiresAt: license.leaseExpiresAt
+  });
+});
+
+/**
+ * Cross-platform license validation endpoint for native Android, iOS, Windows, and macOS viewers
+ */
+licenseRouter.post('/validate', (req: AuthenticatedRequest, res: Response) => {
+  const parse = ValidateLicenseRequestSchema.safeParse(req.body);
+  if (!parse.success) {
+    return res.status(400).json({ error: 'Validation failed', details: parse.error.format() });
+  }
+
+  const { licenseJti, deviceId, currentClientTimeUtc } = parse.data;
+
+  const license = db.findLicenseByJti(licenseJti);
+  if (!license || license.organizationId !== req.user!.organizationId) {
+    return res.status(404).json({
+      isValid: false,
+      reason: 'License not found',
+      isExpired: false,
+      isRevoked: false
+    });
+  }
+
+  if (deviceId && license.deviceId !== deviceId) {
+    return res.status(403).json({
+      isValid: false,
+      reason: 'Device ID mismatch: License is bound to another enrolled hardware device',
+      isExpired: false,
+      isRevoked: false
+    });
+  }
+
+  const grant = db.findGrantById(license.grantId);
+  const isRevoked = Boolean(license.revokedAt) || (grant ? grant.status === 'revoked' : false);
+
+  const clientTime = currentClientTimeUtc ? new Date(currentClientTimeUtc) : new Date();
+  const evaluation = PolicyEngine.evaluate({
+    currentTimeUtc: clientTime,
+    licenseNotBeforeUtc: new Date(license.notBefore),
+    licenseLeaseExpiresUtc: new Date(license.leaseExpiresAt),
+    documentAbsoluteExpiryUtc: new Date(license.expiresAt),
+    currentOpenCount: 1,
+    maxOpens: null,
+    isRevoked
+  });
+
+  return res.json({
+    isValid: evaluation.isPermitted,
+    reason: evaluation.reason,
+    isExpired: !evaluation.isPermitted && evaluation.reason?.includes('EXPIRED') || false,
+    isRevoked,
+    remainingSeconds: evaluation.remainingLeaseSeconds,
+    effectiveDeadlineUtc: evaluation.effectiveDeadlineUtc?.toISOString()
   });
 });

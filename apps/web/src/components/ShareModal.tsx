@@ -419,13 +419,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({ document, isOpen, onClos
                                   ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400 border border-red-200 dark:border-red-800'
                                   : isExpired
                                   ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                                  : s.maxOpens && s.openCount >= s.maxOpens
+                                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-400 border border-purple-200 dark:border-purple-800'
                                   : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
                               }`}
                             >
-                              {isRevoked ? 'Revoked' : isExpired ? 'Expired' : 'Active'}
+                              {isRevoked ? 'Revoked' : isExpired ? 'Expired' : s.maxOpens && s.openCount >= s.maxOpens ? 'Max Opens Reached' : 'Active'}
                             </span>
                             <span className="font-mono text-slate-500 text-[11px]">
-                              Opens: {s.openCount} {s.maxOpens ? `/ ${s.maxOpens}` : ''}
+                              Opens: {s.openCount} {s.maxOpens ? `/ ${s.maxOpens} (${Math.max(0, s.maxOpens - s.openCount)} left)` : '(unlimited)'}
                             </span>
                             {s.singleSessionOnly && (
                               <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 dark:bg-purple-950/40 px-1.5 py-0.5 rounded">
